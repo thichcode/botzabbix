@@ -3,7 +3,6 @@ import logging
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-from zabbix_api import ZabbixAPI
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -16,6 +15,8 @@ import requests
 import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from contextlib import contextmanager
+from typing import Optional, Dict, Any
 
 # Configure logging
 logging.basicConfig(
@@ -27,9 +28,20 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Initialize Zabbix API
-zapi = ZabbixAPI(os.getenv('ZABBIX_URL'))
-zapi.login(os.getenv('ZABBIX_USER'), os.getenv('ZABBIX_PASSWORD'))
+DB_PATH = 'zabbix_alerts.db'
+DB_TIMEOUT = 10  # Assuming a default timeout
+
+def get_zabbix_api():
+    from zabbix_api import ZabbixAPI
+
+    # Ensure ZABBIX_URL is set
+    zabbix_url = os.getenv('ZABBIX_URL')
+    if not zabbix_url:
+        raise ValueError("Environment variable 'ZABBIX_URL' is not set.")
+
+    zapi = ZabbixAPI(zabbix_url)
+    zapi.login(os.getenv('ZABBIX_USER'), os.getenv('ZABBIX_PASSWORD'))
+    return zapi
 
 # List of admin IDs allowed to use the bot
 ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
@@ -37,97 +49,105 @@ ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
 # Data retention period in seconds (3 months)
 DATA_RETENTION_PERIOD = 90 * 24 * 60 * 60
 
-def cleanup_old_data():
-    """Clean up data older than retention period"""
+@contextmanager
+def get_db_connection(db_path=DB_PATH):
+    """Context manager for database connections"""
+    conn = None
     try:
-        conn = sqlite3.connect('zabbix_alerts.db')
-        c = conn.cursor()
-        
-        # Calculate cutoff timestamp
-        cutoff_time = int(time.time()) - DATA_RETENTION_PERIOD
-        
-        # Delete old alerts
-        c.execute('DELETE FROM alerts WHERE timestamp < ?', (cutoff_time,))
-        
-        # Delete old error patterns that haven't been updated
-        c.execute('DELETE FROM error_patterns WHERE last_updated < ?', (cutoff_time,))
-        
-        # Log cleanup results
-        alerts_deleted = c.rowcount
-        logger.info(f"Cleaned up {alerts_deleted} old records")
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Error cleaning up old data: {str(e)}")
+        conn = sqlite3.connect(db_path, timeout=DB_TIMEOUT)
+        conn.row_factory = sqlite3.Row
+        yield conn
+    except sqlite3.Error as e:
+        logger.error(f"Database error: {e}")
+        raise DatabaseError(f"Database connection error: {str(e)}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error closing database connection: {e}")
 
-def init_db():
-    """Initialize SQLite database"""
-    conn = sqlite3.connect('zabbix_alerts.db')
-    c = conn.cursor()
-    
-    # Alerts table
-    c.execute('''CREATE TABLE IF NOT EXISTS alerts
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  trigger_id TEXT,
-                  host TEXT,
-                  description TEXT,
-                  priority INTEGER,
-                  timestamp INTEGER,
-                  status TEXT,
-                  resolution TEXT,
-                  analysis TEXT)''')
-    
-    # Error patterns table with last_updated field
-    c.execute('''CREATE TABLE IF NOT EXISTS error_patterns
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  pattern TEXT,
-                  description TEXT,
-                  solution TEXT,
-                  frequency INTEGER,
-                  last_updated INTEGER)''')
-    
-    # Users table
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (id INTEGER PRIMARY KEY,
-                  username TEXT,
-                  first_name TEXT,
-                  last_name TEXT,
-                  join_date INTEGER,
-                  is_active BOOLEAN DEFAULT 1)''')
-    
-    conn.commit()
-    conn.close()
-    
-    # Run initial cleanup
-    cleanup_old_data()
-
-def save_user(user_id: int, username: str, first_name: str, last_name: str):
-    """Save user information to database"""
+def init_db(db_path=DB_PATH):
+    """Initialize SQLite database with indexes"""
     try:
-        conn = sqlite3.connect('zabbix_alerts.db')
-        c = conn.cursor()
-        
-        c.execute('''INSERT OR REPLACE INTO users 
-                     (id, username, first_name, last_name, join_date, is_active)
-                     VALUES (?, ?, ?, ?, ?, 1)''',
-                  (user_id, username, first_name, last_name, int(time.time())))
-        
-        conn.commit()
-        conn.close()
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            
+            # Alerts table
+            c.execute('''CREATE TABLE IF NOT EXISTS alerts
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          trigger_id TEXT,
+                          host TEXT,
+                          description TEXT,
+                          priority INTEGER,
+                          timestamp INTEGER,
+                          status TEXT,
+                          resolution TEXT,
+                          analysis TEXT)''')
+            
+            # Error patterns table with last_updated field
+            c.execute('''CREATE TABLE IF NOT EXISTS error_patterns
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          pattern TEXT,
+                          description TEXT,
+                          solution TEXT,
+                          frequency INTEGER,
+                          last_updated INTEGER)''')
+            
+            # Users table
+            c.execute('''CREATE TABLE IF NOT EXISTS users
+                         (id INTEGER PRIMARY KEY,
+                          username TEXT,
+                          first_name TEXT,
+                          last_name TEXT,
+                          join_date INTEGER,
+                          is_active BOOLEAN DEFAULT 1)''')
+            
+            # Host websites table
+            c.execute('''CREATE TABLE IF NOT EXISTS host_websites
+                         (host TEXT PRIMARY KEY,
+                          website_url TEXT,
+                          screenshot_enabled BOOLEAN DEFAULT 1)''')
+            
+            conn.commit()
     except Exception as e:
-        logger.error(f"Error saving user info: {str(e)}")
+        logger.error(f"Error initializing database: {e}")
+        raise
 
-def remove_user(user_id: int):
+def save_user(user_id: int, username: str, first_name: str, last_name: str, db_path=DB_PATH) -> bool:
+    """Save user information to database with error handling"""
+    try:
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('''INSERT OR REPLACE INTO users 
+                         (id, username, first_name, last_name, join_date, is_active)
+                         VALUES (?, ?, ?, ?, ?, 1)''',
+                      (user_id, username, first_name, last_name, int(time.time())))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving user: {e}")
+        return False
+
+def get_user(user_id: int, db_path=DB_PATH) -> Optional[Dict[str, Any]]:
+    """Get user information from database"""
+    try:
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+            row = c.fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error getting user: {e}")
+        return None
+
+def remove_user(user_id: int, db_path=DB_PATH):
     """Remove user from database"""
     try:
-        conn = sqlite3.connect('zabbix_alerts.db')
-        c = conn.cursor()
-        
-        c.execute('UPDATE users SET is_active = 0 WHERE id = ?', (user_id,))
-        
-        conn.commit()
-        conn.close()
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('UPDATE users SET is_active = 0 WHERE id = ?', (user_id,))
+            conn.commit()
         return True
     except Exception as e:
         logger.error(f"Error removing user: {str(e)}")
@@ -147,7 +167,12 @@ async def take_screenshot(url: str) -> bytes:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument(f"--window-size={os.getenv('SCREENSHOT_WIDTH', '1920')},{os.getenv('SCREENSHOT_HEIGHT', '1080')}")
 
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        try:
+            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        except Exception as e:
+            logger.error(f"Error in Chrome driver setup: {str(e)}")
+            return None
+
         driver.get(url)
         time.sleep(2)  # Đợi trang load
 
@@ -184,6 +209,7 @@ async def add_host_website(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(f"Đã thêm website {url} cho host {host}")
     except Exception as e:
+        logger.error(f"Error inserting host website: {str(e)}")
         await update.message.reply_text(f"Lỗi khi thêm website: {str(e)}")
 
 async def get_host_website(host: str) -> tuple:
@@ -198,7 +224,7 @@ async def get_host_website(host: str) -> tuple:
         conn.close()
         return result if result else (None, False)
     except Exception as e:
-        logger.error(f"Lỗi khi lấy thông tin website: {str(e)}")
+        logger.error(f"Error fetching host website: {str(e)}")
         return None, False
 
 async def send_alert_with_screenshot(chat_id: int, alert_info: dict, context: ContextTypes.DEFAULT_TYPE):
@@ -225,7 +251,7 @@ async def send_alert_with_screenshot(chat_id: int, alert_info: dict, context: Co
                 await context.bot.send_message(chat_id=chat_id, text="Không thể chụp ảnh website")
 
     except Exception as e:
-        logger.error(f"Lỗi khi gửi cảnh báo: {str(e)}")
+        logger.error(f"Error sending alert with screenshot: {str(e)}")
 
 async def get_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get latest alerts"""
@@ -234,6 +260,7 @@ async def get_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        zapi = get_zabbix_api()
         alerts = zapi.trigger.get({
             "output": ["description", "lastchange", "priority", "triggerid"],
             "selectHosts": ["host"],
@@ -241,7 +268,12 @@ async def get_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "sortorder": "DESC",
             "limit": 10
         })
+    except Exception as e:
+        logger.error(f"Error fetching latest alerts: {str(e)}")
+        await update.message.reply_text(f"Error fetching latest alerts: {str(e)}")
+        return
 
+    try:
         for alert in alerts:
             host = alert['hosts'][0]['host'] if alert['hosts'] else "Unknown"
             alert_info = {
@@ -265,6 +297,7 @@ async def get_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_alert_with_screenshot(update.effective_chat.id, alert_info, context)
 
     except Exception as e:
+        logger.error(f"Error processing alerts: {str(e)}")
         await update.message.reply_text(f"Error getting alerts: {str(e)}")
 
 async def get_hosts(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -274,11 +307,17 @@ async def get_hosts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        zapi = get_zabbix_api()
         hosts = zapi.host.get({
             "output": ["host", "status"],
             "selectInterfaces": ["ip"]
         })
+    except Exception as e:
+        logger.error(f"Error fetching monitored hosts: {str(e)}")
+        await update.message.reply_text(f"Error fetching monitored hosts: {str(e)}")
+        return
 
+    try:
         message = "List of hosts:\n\n"
         for host in hosts:
             status = "Online" if host['status'] == '0' else "Offline"
@@ -289,6 +328,7 @@ async def get_hosts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(message)
     except Exception as e:
+        logger.error(f"Error processing host list: {str(e)}")
         await update.message.reply_text(f"Error getting host list: {str(e)}")
 
 async def get_graph(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -307,6 +347,7 @@ async def get_graph(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Find host ID
+        zapi = get_zabbix_api()
         hosts = zapi.host.get({
             "filter": {"host": host},
             "output": ["hostid"]
@@ -372,6 +413,7 @@ async def get_graph(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=buf)
         
     except Exception as e:
+        logger.error(f"Error creating graph: {str(e)}")
         await update.message.reply_text(f"Error creating graph: {str(e)}")
 
 async def take_zabbix_dashboard_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -421,6 +463,7 @@ async def take_zabbix_dashboard_screenshot(update: Update, context: ContextTypes
             driver.quit()
             
     except Exception as e:
+        logger.error(f"Error taking dashboard screenshot: {str(e)}")
         await update.message.reply_text(f"Error taking dashboard screenshot: {str(e)}")
 
 async def ask_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -439,6 +482,7 @@ async def ask_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start_time = end_time - 86400 * 7  # 7 ngày gần nhất
 
         # Lấy thông tin alerts
+        zapi = get_zabbix_api()
         alerts = zapi.trigger.get({
             "output": ["description", "lastchange", "priority"],
             "sortfield": "lastchange",
@@ -503,289 +547,243 @@ Hãy phân tích dữ liệu và trả lời câu hỏi trên."""
             await update.message.reply_text(f"Lỗi từ AI: {response.text}")
 
     except Exception as e:
+        logger.error(f"Error in AI analysis: {str(e)}")
         await update.message.reply_text(f"Lỗi khi phân tích dữ liệu: {str(e)}")
 
 async def analyze_and_predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Analyze and predict trends"""
+    """Analyze historical alerts and predict potential future issues based on patterns."""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("You don't have permission to use this command.")
         return
 
     try:
-        # Get alert history
+        await update.message.reply_text("Đang phân tích và dự đoán xu hướng cảnh báo...")
+        zapi = get_zabbix_api()
+        # Get alert history for the last 7 days
         end_time = int(time.time())
         start_time = end_time - 86400 * 7  # 7 days
 
         triggers = zapi.trigger.get({
             "output": ["description", "lastchange", "priority"],
+            "selectHosts": ["host"],
             "sortfield": "lastchange",
             "sortorder": "DESC",
             "time_from": start_time,
             "time_till": end_time
         })
 
-        # Analyze patterns
+        if not triggers:
+            await update.message.reply_text("Không có dữ liệu cảnh báo nào trong 7 ngày qua để phân tích.")
+            return
+
+        # Analyze patterns by description and host
         patterns = {}
+        host_alerts = {}
+        daily_counts = {}
         for trigger in triggers:
             desc = trigger['description']
+            host = trigger['hosts'][0]['host'] if trigger['hosts'] else "Unknown"
+            timestamp = int(trigger['lastchange'])
+            day = time.strftime('%Y-%m-%d', time.localtime(timestamp))
+            
+            # Count by description
             if desc in patterns:
                 patterns[desc] += 1
             else:
                 patterns[desc] = 1
+                
+            # Count by host
+            if host in host_alerts:
+                host_alerts[host] += 1
+            else:
+                host_alerts[host] = 1
+                
+            # Count by day for trend analysis
+            if day in daily_counts:
+                daily_counts[day] += 1
+            else:
+                daily_counts[day] = 1
 
         # Create analysis report
-        report = "📊 Analysis and Predictions:\n\n"
+        report = "📊 Báo cáo phân tích và dự đoán xu hướng (7 ngày qua):\n\n"
+        report += f"Tổng số cảnh báo: {len(triggers)}\n\n"
         
-        # Alert statistics
-        report += "1. Alert Statistics:\n"
-        for desc, count in sorted(patterns.items(), key=lambda x: x[1], reverse=True):
-            report += f"- {desc}: {count} times\n"
-
-        # Trend predictions
-        report += "\n2. Trend Predictions:\n"
-        for desc, count in sorted(patterns.items(), key=lambda x: x[1], reverse=True)[:3]:
-            if count > 5:
-                report += f"- {desc} is likely to occur again\n"
-
-        # Send report
+        # Most frequent alerts
+        report += "🔥 Các cảnh báo thường xuyên nhất:\n"
+        sorted_patterns = sorted(patterns.items(), key=lambda x: x[1], reverse=True)[:5]
+        for desc, count in sorted_patterns:
+            report += f"- {desc}: {count} lần\n"
+        report += "\n"
+        
+        # Hosts with most alerts
+        report += "🖥️ Các host có nhiều cảnh báo nhất:\n"
+        sorted_hosts = sorted(host_alerts.items(), key=lambda x: x[1], reverse=True)[:5]
+        for host, count in sorted_hosts:
+            report += f"- {host}: {count} cảnh báo\n"
+        report += "\n"
+        
+        # Daily trend
+        report += "📅 Xu hướng cảnh báo theo ngày:\n"
+        sorted_days = sorted(daily_counts.items(), key=lambda x: x[0])
+        for day, count in sorted_days:
+            report += f"- {day}: {count} cảnh báo\n"
+        report += "\n"
+        
+        # Simple prediction based on frequency
+        report += "🔮 Dự đoán:\n"
+        if sorted_patterns:
+            most_frequent = sorted_patterns[0]
+            report += f"- Cảnh báo '{most_frequent[0]}' có khả năng xảy ra tiếp theo do tần suất cao ({most_frequent[1]} lần).\n"
+        if sorted_hosts:
+            most_affected = sorted_hosts[0]
+            report += f"- Host '{most_affected[0]}' có khả năng gặp vấn đề tiếp theo ({most_affected[1]} cảnh báo).\n"
+        
         await update.message.reply_text(report)
-
+        
     except Exception as e:
-        await update.message.reply_text(f"Error during analysis: {str(e)}")
+        logger.error(f"Error in analyze_and_predict: {str(e)}")
+        await update.message.reply_text(f"Lỗi khi phân tích và dự đoán xu hướng: {str(e)}")
 
-def save_alert(trigger_id: str, host: str, description: str, priority: int, timestamp: int):
+def save_alert(trigger_id, host, description, priority, timestamp, db_path=DB_PATH):
     """Save alert to database"""
     try:
-        conn = sqlite3.connect('zabbix_alerts.db')
-        c = conn.cursor()
-        
-        # Check if alert already exists
-        c.execute('SELECT id FROM alerts WHERE trigger_id = ? AND timestamp = ?', 
-                 (trigger_id, timestamp))
-        if c.fetchone():
-            return
-        
-        c.execute('''INSERT INTO alerts 
-                     (trigger_id, host, description, priority, timestamp)
-                     VALUES (?, ?, ?, ?, ?)''',
-                  (trigger_id, host, description, priority, timestamp))
-        
-        conn.commit()
-        conn.close()
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('''INSERT INTO alerts 
+                         (trigger_id, host, description, priority, timestamp)
+                         VALUES (?, ?, ?, ?, ?)''',
+                      (trigger_id, host, description, priority, timestamp))
+            conn.commit()
+            return True
     except Exception as e:
-        logger.error(f"Error saving alert: {str(e)}")
+        logger.error(f"Error saving alert: {e}")
+        return False
 
-def update_error_pattern(pattern: str, description: str, solution: str):
-    """Update error pattern in database"""
+def add_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
+    """Thêm error pattern vào database"""
     try:
-        conn = sqlite3.connect('zabbix_alerts.db')
-        c = conn.cursor()
-        
-        current_time = int(time.time())
-        
-        c.execute('''INSERT OR REPLACE INTO error_patterns 
-                     (pattern, description, solution, frequency, last_updated)
-                     VALUES (?, ?, ?, 
-                            COALESCE((SELECT frequency + 1 FROM error_patterns WHERE pattern = ?), 1),
-                            ?)''',
-                  (pattern, description, solution, pattern, current_time))
-        
-        conn.commit()
-        conn.close()
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('''INSERT OR REPLACE INTO error_patterns 
+                         (pattern, description, solution, frequency, last_updated)
+                         VALUES (?, NULL, NULL, 0, ?)''',
+                      (pattern, int(time.time())))
+            conn.commit()
+        return True
     except Exception as e:
-        logger.error(f"Error updating error pattern: {str(e)}")
+        logger.error(f"Error adding error pattern: {e}")
+        return False
 
-async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Remove user from bot"""
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("You don't have permission to use this command.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Please provide user ID to remove.")
-        return
-
+def get_error_patterns(db_path=DB_PATH) -> list:
+    """Lấy danh sách error patterns từ database"""
     try:
-        user_id = int(context.args[0])
-        if remove_user(user_id):
-            await update.message.reply_text(f"User with ID {user_id} has been removed from bot.")
-        else:
-            await update.message.reply_text(f"Could not remove user with ID {user_id}.")
-    except ValueError:
-        await update.message.reply_text("Invalid user ID.")
-
-async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List all users"""
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("You don't have permission to use this command.")
-        return
-
-    try:
-        conn = sqlite3.connect('zabbix_alerts.db')
-        c = conn.cursor()
-        
-        c.execute('SELECT id, username, first_name, last_name, join_date, is_active FROM users')
-        users = c.fetchall()
-        
-        conn.close()
-
-        if not users:
-            await update.message.reply_text("No users in database.")
-            return
-
-        message = "📋 User List:\n\n"
-        for user in users:
-            user_id, username, first_name, last_name, join_date, is_active = user
-            status = "✅ Active" if is_active else "❌ Removed"
-            join_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(join_date))
-            message += f"ID: {user_id}\n"
-            message += f"Username: @{username if username else 'N/A'}\n"
-            message += f"Name: {first_name} {last_name if last_name else ''}\n"
-            message += f"Join Date: {join_time}\n"
-            message += f"Status: {status}\n\n"
-
-        await update.message.reply_text(message)
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('SELECT pattern FROM error_patterns')
+            return [row['pattern'] for row in c.fetchall()]
     except Exception as e:
-        await update.message.reply_text(f"Error getting user list: {str(e)}")
+        logger.error(f"Error getting error patterns: {e}")
+        return []
+
+def remove_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
+    """Xóa error pattern khỏi database"""
+    try:
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM error_patterns WHERE pattern = ?', (pattern,))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error removing error pattern: {e}")
+        return False
+
+def cleanup_old_data(db_path=DB_PATH, retention_period=DATA_RETENTION_PERIOD):
+    """Xóa dữ liệu cũ khỏi database"""
+    try:
+        cutoff_time = int(time.time()) - retention_period
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            # Xóa alerts cũ
+            c.execute('DELETE FROM alerts WHERE timestamp < ?', (cutoff_time,))
+            alerts_deleted = c.rowcount
+            # Xóa error patterns cũ
+            c.execute('DELETE FROM error_patterns WHERE last_updated < ?', (cutoff_time,))
+            patterns_deleted = c.rowcount
+            conn.commit()
+            logger.info(f"Cleaned up {alerts_deleted} old alerts and {patterns_deleted} old patterns")
+    except Exception as e:
+        logger.error(f"Error cleaning up old data: {e}")
+
+async def process_alerts_batch(alerts: list, context: ContextTypes.DEFAULT_TYPE):
+    """Xử lý một batch alerts"""
+    try:
+        for alert in alerts:
+            # Lưu alert vào database
+            save_alert(
+                alert['triggerid'],
+                alert['hosts'][0]['host'],
+                alert['description'],
+                alert['priority'],
+                int(alert['lastchange'])
+            )
+            
+            # Gửi alert cho tất cả users
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute('SELECT id FROM users WHERE is_active = 1')
+                users = c.fetchall()
+                
+                for user in users:
+                    await send_alert_with_screenshot(user['id'], {
+                        'host': alert['hosts'][0]['host'],
+                        'description': alert['description'],
+                        'priority': alert['priority'],
+                        'timestamp': int(alert['lastchange'])
+                    }, context)
+    except Exception as e:
+        logger.error(f"Error processing alerts batch: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
+    """Send a welcome message when the command /start is issued."""
     user = update.effective_user
-    user_id = user.id
-    
-    # Save user information
-    save_user(user_id, user.username, user.first_name, user.last_name)
-    
-    # Check admin privileges
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text(
-            f"Hello {user.first_name}!\n"
-            f"Your ID is: {user_id}\n"
-            "You don't have permission to use this bot.\n"
-            "Please contact admin for access."
-        )
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("Bạn không có quyền sử dụng bot này.")
         return
-    
+    save_user(user.id, user.username, user.first_name, user.last_name)
     await update.message.reply_text(
-        f"Welcome to Zabbix Bot!\n"
-        f"Your ID is: {user_id}\n\n"
-        "Available commands:\n"
-        "/dashboard - Take screenshot of Zabbix dashboard\n"
-        "/alerts - View latest alerts (admin only)\n"
-        "/hosts - List monitored hosts (admin only)\n"
-        "/problems - View active problems (admin only)\n"
-        "/users - List all users (admin only)\n"
-        "/removeuser - Remove a user (admin only)"
+        f"Chào {user.first_name}!\n"
+        "Tôi là bot theo dõi cảnh báo Zabbix.\n"
+        "Các lệnh khả dụng:\n"
+        "/getalerts - Lấy các cảnh báo mới nhất\n"
+        "/gethosts - Lấy danh sách host\n"
+        "/graph <host> <item_key> [period] - Lấy biểu đồ hiệu suất\n"
+        "/dashboard - Chụp ảnh dashboard Zabbix\n"
+        "/ask <câu hỏi> - Hỏi AI về dữ liệu Zabbix\n"
+        "/analyze - Phân tích và dự đoán xu hướng\n"
+        "/addwebsite <host> <url> [enabled] - Thêm website cho host"
     )
 
-async def get_active_problems(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Get last 20 active problems from Zabbix dashboard ID 10 with severity >= Warning"""
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Bạn không có quyền sử dụng lệnh này.")
-        return
-
-    try:
-        # Get dashboard items for dashboard ID 10
-        dashboard_items = zapi.dashboard.get({
-            "output": ["dashboardid"],
-            "filter": {"dashboardid": "10"},
-            "selectPages": ["dashboard_pageid"],
-            "selectWidgets": ["widgetid", "type", "name"]
-        })
-
-        if not dashboard_items:
-            await update.message.reply_text("Không tìm thấy dashboard ID 10.")
-            return
-
-        # Get all hosts from dashboard widgets
-        dashboard_hosts = set()
-        for item in dashboard_items:
-            for page in item.get('pages', []):
-                for widget in page.get('widgets', []):
-                    if widget.get('type') in ['problems', 'problemhosts']:
-                        # Get hosts from widget
-                        widget_hosts = zapi.host.get({
-                            "output": ["hostid"],
-                            "filter": {"host": widget.get('name', '')}
-                        })
-                        for host in widget_hosts:
-                            dashboard_hosts.add(host['hostid'])
-
-        # Get active problems for these hosts with severity >= Warning (2)
-        problems = zapi.problem.get({
-            "output": ["eventid", "name", "severity", "clock"],
-            "selectTags": ["tag", "value"],
-            "selectHosts": ["host"],
-            "hostids": list(dashboard_hosts),
-            "severities": ["2", "3", "4", "5"],  # Warning, Average, High, Disaster
-            "sortfield": "clock",
-            "sortorder": "DESC",
-            "limit": 20
-        })
-
-        if not problems:
-            await update.message.reply_text("Không có problem nào đang tồn tại trong dashboard.")
-            return
-
-        message = "🔴 Danh sách 20 problem đang tồn tại trong dashboard (từ Warning trở lên):\n\n"
-        for problem in problems:
-            # Get host name
-            host = problem['hosts'][0]['host'] if problem['hosts'] else "Unknown"
-            
-            # Format severity with emoji
-            severity_map = {
-                "2": "⚠️ Warning",
-                "3": "⚠️ Average",
-                "4": "🚨 High",
-                "5": "💥 Disaster"
-            }
-            severity = severity_map.get(problem['severity'], "Unknown")
-            
-            # Format time
-            time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(problem['clock'])))
-            
-            # Format tags
-            tags = [f"{tag['tag']}: {tag['value']}" for tag in problem['tags']] if 'tags' in problem else []
-            tags_str = "\n  Tags: " + ", ".join(tags) if tags else ""
-            
-            message += f"Host: {host}\n"
-            message += f"Problem: {problem['name']}\n"
-            message += f"Mức độ: {severity}\n"
-            message += f"Thời gian: {time_str}{tags_str}\n\n"
-
-        await update.message.reply_text(message)
-
-    except Exception as e:
-        await update.message.reply_text(f"Lỗi khi lấy danh sách problem: {str(e)}")
-
-def main():
-    """Start the bot"""
+def main() -> None:
+    """Start the bot."""
     # Initialize database
     init_db()
     
+    # Create the Application and pass it your bot's token.
     application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
 
-    # Add handlers
+    # Add handlers for commands
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("alerts", get_alerts))
-    application.add_handler(CommandHandler("hosts", get_hosts))
-    application.add_handler(CommandHandler("problems", get_active_problems))
+    application.add_handler(CommandHandler("getalerts", get_alerts))
+    application.add_handler(CommandHandler("gethosts", get_hosts))
     application.add_handler(CommandHandler("graph", get_graph))
     application.add_handler(CommandHandler("dashboard", take_zabbix_dashboard_screenshot))
-    application.add_handler(CommandHandler("askai", ask_ai))
+    application.add_handler(CommandHandler("ask", ask_ai))
     application.add_handler(CommandHandler("analyze", analyze_and_predict))
-    application.add_handler(CommandHandler("removeuser", remove_user_command))
-    application.add_handler(CommandHandler("users", list_users))
+    application.add_handler(CommandHandler("addwebsite", add_host_website))
 
-    # Schedule periodic cleanup
-    application.job_queue.run_repeating(
-        lambda context: cleanup_old_data(),
-        interval=24 * 60 * 60,  # Run daily
-        first=10  # Start after 10 seconds
-    )
-
-    # Run bot
-    application.run_polling()
+    # Start the Bot
+    logger.info("Starting bot...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-    main() 
+    main()

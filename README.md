@@ -132,4 +132,53 @@ If you encounter issues, please check: / Nếu gặp vấn đề, vui lòng ki�
 
 ## License / Giấy phép
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Integration Guide / Hướng dẫn tích hợp
+
+### 1. Tích hợp với Telegram
+- Tạo bot mới trên Telegram bằng cách nhắn cho @BotFather và lấy token.
+- Thêm token vào file `.env` với biến TELEGRAM_BOT_TOKEN.
+- Thêm user ID của admin vào biến ADMIN_IDS (cách nhau bởi dấu phẩy).
+
+### 2. Tích hợp với Zabbix
+- Đảm bảo Zabbix server đã bật API (Zabbix >= 3.0).
+- Tạo user trên Zabbix có quyền đọc dữ liệu (Read-only hoặc Admin).
+- Lấy URL, username, password của Zabbix và điền vào file `.env`:
+  - ZABBIX_URL
+  - ZABBIX_USER
+  - ZABBIX_PASSWORD
+- Đảm bảo server chạy bot có thể truy cập được Zabbix server qua mạng nội bộ hoặc internet.
+
+### 3. Tích hợp AI (Open WebUI hoặc GPT API)
+- Đăng ký tài khoản Open WebUI hoặc dịch vụ AI tương thích OpenAI API.
+- Lấy API URL và API KEY, điền vào file `.env`:
+  - OPENWEBUI_API_URL
+  - OPENWEBUI_API_KEY
+- Đảm bảo server chạy bot có thể truy cập được API AI này.
+
+### 4. Tích hợp Screenshot (Selenium + Chrome)
+- Cài đặt Google Chrome trên server.
+- Đảm bảo các biến môi trường SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT đã được cấu hình trong `.env` (mặc định 1920x1080).
+- Nếu chạy trên server Linux, nên cài đặt thêm các gói hỗ trợ headless Chrome (`libnss3`, `libgconf-2-4`, `fonts-liberation`, ...).
+
+### 5. Tích hợp với hệ thống cảnh báo Zabbix (tùy chọn)
+- Có thể cấu hình Zabbix gửi cảnh báo qua HTTP hoặc script để gọi API của bot Telegram này.
+- Hoặc sử dụng bot để chủ động lấy cảnh báo từ Zabbix qua lệnh `/alerts`.
+
+### 6. Kiểm thử & Tích hợp CI/CD
+- Chạy toàn bộ test bằng lệnh:
+  ```bash
+  python -m pytest test_bot.py -v
+  ```
+- Đảm bảo tất cả test đều pass trước khi deploy.
+- Có thể tích hợp vào pipeline CI/CD (GitHub Actions, GitLab CI, Jenkins, ...).
+
+### 7. Lưu ý khi tích hợp thực tế
+- Luôn backup file database `zabbix_alerts.db` định kỳ.
+- Đảm bảo file `.env` không bị public lên git.
+- Kiểm tra log file `bot.log` để debug khi có lỗi.
+- Có thể mở rộng thêm các API hoặc webhook tùy nhu cầu doanh nghiệp.
+
+---
+Nếu cần hướng dẫn chi tiết hơn cho từng môi trường (Linux, Windows, Docker, Cloud), hãy liên hệ hoặc để lại yêu cầu! 
