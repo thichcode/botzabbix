@@ -160,7 +160,7 @@ def extract_url_from_text(text: str) -> str:
     return urls[0] if urls else None
 
 async def take_screenshot(url: str) -> bytes:
-    """Chụp ảnh màn hình website và trả về dạng bytes"""
+    """Take a screenshot of the website and return it as bytes"""
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
@@ -180,17 +180,17 @@ async def take_screenshot(url: str) -> bytes:
         driver.quit()
         return screenshot
     except Exception as e:
-        logger.error(f"Lỗi khi chụp ảnh: {str(e)}")
+        logger.error(f"Error taking screenshot: {str(e)}")
         return None
 
 async def add_host_website(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Thêm URL website cho host"""
+    """Add website URL for host"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Bạn không có quyền sử dụng lệnh này.")
+        await update.message.reply_text("You don't have permission to use this command.")
         return
 
     if len(context.args) < 2:
-        await update.message.reply_text("Vui lòng cung cấp host và URL website.\nVí dụ: /addwebsite host1 https://example.com")
+        await update.message.reply_text("Please provide host and URL website.\nExample: /addwebsite host1 https://example.com")
         return
 
     host = context.args[0]
@@ -207,13 +207,13 @@ async def add_host_website(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
         
-        await update.message.reply_text(f"Đã thêm website {url} cho host {host}")
+        await update.message.reply_text(f"Added website {url} for host {host}")
     except Exception as e:
         logger.error(f"Error inserting host website: {str(e)}")
-        await update.message.reply_text(f"Lỗi khi thêm website: {str(e)}")
+        await update.message.reply_text(f"Error adding website: {str(e)}")
 
 async def get_host_website(host: str) -> tuple:
-    """Lấy thông tin website của host"""
+    """Get website information for host"""
     try:
         conn = sqlite3.connect('zabbix_alerts.db')
         c = conn.cursor()
@@ -228,27 +228,27 @@ async def get_host_website(host: str) -> tuple:
         return None, False
 
 async def send_alert_with_screenshot(chat_id: int, alert_info: dict, context: ContextTypes.DEFAULT_TYPE):
-    """Gửi cảnh báo kèm ảnh chụp màn hình nếu có URL trong trigger"""
+    """Send alert with screenshot if there is a URL in the trigger"""
     try:
-        # Tạo message cảnh báo
-        message = f"⚠️ Cảnh báo mới:\n"
+        # Create alert message
+        message = f"⚠️ New Alert:\n"
         message += f"Host: {alert_info['host']}\n"
-        message += f"Mô tả: {alert_info['description']}\n"
-        message += f"Mức độ: {alert_info['priority']}\n"
-        message += f"Thời gian: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(alert_info['timestamp']))}\n"
+        message += f"Description: {alert_info['description']}\n"
+        message += f"Severity: {alert_info['priority']}\n"
+        message += f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(alert_info['timestamp']))}\n"
 
-        # Gửi message cảnh báo
+        # Send alert message
         await context.bot.send_message(chat_id=chat_id, text=message)
 
-        # Kiểm tra và trích xuất URL từ mô tả cảnh báo
+        # Check and extract URL from alert description
         url = extract_url_from_text(alert_info['description'])
         if url:
-            await context.bot.send_message(chat_id=chat_id, text=f"Đang chụp ảnh website {url}...")
+            await context.bot.send_message(chat_id=chat_id, text=f"Taking screenshot of website {url}...")
             screenshot = await take_screenshot(url)
             if screenshot:
                 await context.bot.send_photo(chat_id=chat_id, photo=io.BytesIO(screenshot))
             else:
-                await context.bot.send_message(chat_id=chat_id, text="Không thể chụp ảnh website")
+                await context.bot.send_message(chat_id=chat_id, text="Unable to take screenshot of website")
 
     except Exception as e:
         logger.error(f"Error sending alert with screenshot: {str(e)}")
@@ -469,19 +469,19 @@ async def take_zabbix_dashboard_screenshot(update: Update, context: ContextTypes
 async def ask_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send question to AI (Open WebUI) and get response about Zabbix data"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Bạn không có quyền sử dụng lệnh này.")
+        await update.message.reply_text("You don't have permission to use this command.")
         return
 
     if not context.args:
-        await update.message.reply_text("Vui lòng nhập câu hỏi về dữ liệu Zabbix.")
+        await update.message.reply_text("Please enter a question about Zabbix data.")
         return
 
     try:
-        # Lấy dữ liệu Zabbix
+        # Get Zabbix data
         end_time = int(time.time())
-        start_time = end_time - 86400 * 7  # 7 ngày gần nhất
+        start_time = end_time - 86400 * 7  # Last 7 days
 
-        # Lấy thông tin alerts
+        # Get alerts information
         zapi = get_zabbix_api()
         alerts = zapi.trigger.get({
             "output": ["description", "lastchange", "priority"],
@@ -491,13 +491,13 @@ async def ask_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "time_till": end_time
         })
 
-        # Lấy thông tin hosts
+        # Get hosts information
         hosts = zapi.host.get({
             "output": ["host", "status"],
             "selectInterfaces": ["ip"]
         })
 
-        # Chuẩn bị dữ liệu cho AI
+        # Prepare data for AI
         zabbix_data = {
             "alerts": alerts,
             "hosts": hosts,
@@ -507,22 +507,22 @@ async def ask_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
 
-        # Tạo prompt cho AI
-        prompt = f"""Dữ liệu Zabbix trong 7 ngày qua:
-- Số lượng cảnh báo: {len(alerts)}
-- Số lượng host: {len(hosts)}
-- Thời gian: từ {time.strftime('%Y-%m-%d', time.localtime(start_time))} đến {time.strftime('%Y-%m-%d', time.localtime(end_time))}
+        # Create prompt for AI
+        prompt = f"""Zabbix data for the past 7 days:
+- Number of alerts: {len(alerts)}
+- Number of hosts: {len(hosts)}
+- Time range: from {time.strftime('%Y-%m-%d', time.localtime(start_time))} to {time.strftime('%Y-%m-%d', time.localtime(end_time))}
 
-Câu hỏi: {' '.join(context.args)}
+Question: {' '.join(context.args)}
 
-Hãy phân tích dữ liệu và trả lời câu hỏi trên."""
+Please analyze the data and answer the question above."""
 
-        # Gọi API Open WebUI
+        # Call Open WebUI API
         api_url = os.getenv('OPENWEBUI_API_URL')
         api_key = os.getenv('OPENWEBUI_API_KEY')
 
         if not api_url or not api_key:
-            await update.message.reply_text("Chưa cấu hình Open WebUI API.")
+            await update.message.reply_text("Open WebUI API not configured.")
             return
 
         headers = {
@@ -536,19 +536,19 @@ Hãy phân tích dữ liệu và trả lời câu hỏi trên."""
             ]
         }
 
-        await update.message.reply_text("Đang phân tích dữ liệu Zabbix...")
+        await update.message.reply_text("Analyzing Zabbix data...")
         
         response = requests.post(api_url, headers=headers, json=data, timeout=60)
         if response.status_code == 200:
             result = response.json()
-            ai_reply = result.get('choices', [{}])[0].get('message', {}).get('content', 'Không nhận được phản hồi từ AI.')
+            ai_reply = result.get('choices', [{}])[0].get('message', {}).get('content', 'No response received from AI.')
             await update.message.reply_text(ai_reply)
         else:
-            await update.message.reply_text(f"Lỗi từ AI: {response.text}")
+            await update.message.reply_text(f"Error from AI: {response.text}")
 
     except Exception as e:
         logger.error(f"Error in AI analysis: {str(e)}")
-        await update.message.reply_text(f"Lỗi khi phân tích dữ liệu: {str(e)}")
+        await update.message.reply_text(f"Error analyzing data: {str(e)}")
 
 async def analyze_and_predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Analyze historical alerts and predict potential future issues based on patterns."""
@@ -557,7 +557,7 @@ async def analyze_and_predict(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     try:
-        await update.message.reply_text("Đang phân tích và dự đoán xu hướng cảnh báo...")
+        await update.message.reply_text("Analyzing and predicting alert trends...")
         zapi = get_zabbix_api()
         # Get alert history for the last 7 days
         end_time = int(time.time())
@@ -573,7 +573,7 @@ async def analyze_and_predict(update: Update, context: ContextTypes.DEFAULT_TYPE
         })
 
         if not triggers:
-            await update.message.reply_text("Không có dữ liệu cảnh báo nào trong 7 ngày qua để phân tích.")
+            await update.message.reply_text("No alert data available for the past 7 days to analyze.")
             return
 
         # Analyze patterns by description and host
@@ -605,44 +605,44 @@ async def analyze_and_predict(update: Update, context: ContextTypes.DEFAULT_TYPE
                 daily_counts[day] = 1
 
         # Create analysis report
-        report = "📊 Báo cáo phân tích và dự đoán xu hướng (7 ngày qua):\n\n"
-        report += f"Tổng số cảnh báo: {len(triggers)}\n\n"
+        report = "📊 Analysis and Trend Prediction Report (Past 7 Days):\n\n"
+        report += f"Total Alerts: {len(triggers)}\n\n"
         
         # Most frequent alerts
-        report += "🔥 Các cảnh báo thường xuyên nhất:\n"
+        report += "🔥 Most Frequent Alerts:\n"
         sorted_patterns = sorted(patterns.items(), key=lambda x: x[1], reverse=True)[:5]
         for desc, count in sorted_patterns:
-            report += f"- {desc}: {count} lần\n"
+            report += f"- {desc}: {count} times\n"
         report += "\n"
         
         # Hosts with most alerts
-        report += "🖥️ Các host có nhiều cảnh báo nhất:\n"
+        report += "🖥️ Hosts with Most Alerts:\n"
         sorted_hosts = sorted(host_alerts.items(), key=lambda x: x[1], reverse=True)[:5]
         for host, count in sorted_hosts:
-            report += f"- {host}: {count} cảnh báo\n"
+            report += f"- {host}: {count} alerts\n"
         report += "\n"
         
         # Daily trend
-        report += "📅 Xu hướng cảnh báo theo ngày:\n"
+        report += "📅 Alert Trends by Day:\n"
         sorted_days = sorted(daily_counts.items(), key=lambda x: x[0])
         for day, count in sorted_days:
-            report += f"- {day}: {count} cảnh báo\n"
+            report += f"- {day}: {count} alerts\n"
         report += "\n"
         
         # Simple prediction based on frequency
-        report += "🔮 Dự đoán:\n"
+        report += "🔮 Predictions:\n"
         if sorted_patterns:
             most_frequent = sorted_patterns[0]
-            report += f"- Cảnh báo '{most_frequent[0]}' có khả năng xảy ra tiếp theo do tần suất cao ({most_frequent[1]} lần).\n"
+            report += f"- Alert '{most_frequent[0]}' is likely to occur next due to high frequency ({most_frequent[1]} times).\n"
         if sorted_hosts:
             most_affected = sorted_hosts[0]
-            report += f"- Host '{most_affected[0]}' có khả năng gặp vấn đề tiếp theo ({most_affected[1]} cảnh báo).\n"
+            report += f"- Host '{most_affected[0]}' is likely to have issues next ({most_affected[1]} alerts).\n"
         
         await update.message.reply_text(report)
         
     except Exception as e:
         logger.error(f"Error in analyze_and_predict: {str(e)}")
-        await update.message.reply_text(f"Lỗi khi phân tích và dự đoán xu hướng: {str(e)}")
+        await update.message.reply_text(f"Error analyzing and predicting trends: {str(e)}")
 
 def save_alert(trigger_id, host, description, priority, timestamp, db_path=DB_PATH):
     """Save alert to database"""
@@ -660,7 +660,7 @@ def save_alert(trigger_id, host, description, priority, timestamp, db_path=DB_PA
         return False
 
 def add_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
-    """Thêm error pattern vào database"""
+    """Add error pattern to database"""
     try:
         with get_db_connection(db_path) as conn:
             c = conn.cursor()
@@ -675,7 +675,7 @@ def add_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
         return False
 
 def get_error_patterns(db_path=DB_PATH) -> list:
-    """Lấy danh sách error patterns từ database"""
+    """Get list of error patterns from database"""
     try:
         with get_db_connection(db_path) as conn:
             c = conn.cursor()
@@ -686,7 +686,7 @@ def get_error_patterns(db_path=DB_PATH) -> list:
         return []
 
 def remove_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
-    """Xóa error pattern khỏi database"""
+    """Remove error pattern from database"""
     try:
         with get_db_connection(db_path) as conn:
             c = conn.cursor()
@@ -698,15 +698,15 @@ def remove_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
         return False
 
 def cleanup_old_data(db_path=DB_PATH, retention_period=DATA_RETENTION_PERIOD):
-    """Xóa dữ liệu cũ khỏi database"""
+    """Remove old data from database"""
     try:
         cutoff_time = int(time.time()) - retention_period
         with get_db_connection(db_path) as conn:
             c = conn.cursor()
-            # Xóa alerts cũ
+            # Delete old alerts
             c.execute('DELETE FROM alerts WHERE timestamp < ?', (cutoff_time,))
             alerts_deleted = c.rowcount
-            # Xóa error patterns cũ
+            # Delete old error patterns
             c.execute('DELETE FROM error_patterns WHERE last_updated < ?', (cutoff_time,))
             patterns_deleted = c.rowcount
             conn.commit()
@@ -715,10 +715,10 @@ def cleanup_old_data(db_path=DB_PATH, retention_period=DATA_RETENTION_PERIOD):
         logger.error(f"Error cleaning up old data: {e}")
 
 async def process_alerts_batch(alerts: list, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý một batch alerts"""
+    """Process a batch of alerts"""
     try:
         for alert in alerts:
-            # Lưu alert vào database
+            # Save alert to database
             save_alert(
                 alert['triggerid'],
                 alert['hosts'][0]['host'],
@@ -727,7 +727,7 @@ async def process_alerts_batch(alerts: list, context: ContextTypes.DEFAULT_TYPE)
                 int(alert['lastchange'])
             )
             
-            # Gửi alert cho tất cả users
+            # Send alert to all users
             with get_db_connection() as conn:
                 c = conn.cursor()
                 c.execute('SELECT id FROM users WHERE is_active = 1')
@@ -747,20 +747,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a welcome message when the command /start is issued."""
     user = update.effective_user
     if user.id not in ADMIN_IDS:
-        await update.message.reply_text("Bạn không có quyền sử dụng bot này.")
+        await update.message.reply_text("You don't have permission to use this bot.")
         return
     save_user(user.id, user.username, user.first_name, user.last_name)
     await update.message.reply_text(
-        f"Chào {user.first_name}!\n"
-        "Tôi là bot theo dõi cảnh báo Zabbix.\n"
-        "Các lệnh khả dụng:\n"
-        "/getalerts - Lấy các cảnh báo mới nhất\n"
-        "/gethosts - Lấy danh sách host\n"
-        "/graph <host> <item_key> [period] - Lấy biểu đồ hiệu suất\n"
-        "/dashboard - Chụp ảnh dashboard Zabbix\n"
-        "/ask <câu hỏi> - Hỏi AI về dữ liệu Zabbix\n"
-        "/analyze - Phân tích và dự đoán xu hướng\n"
-        "/addwebsite <host> <url> [enabled] - Thêm website cho host"
+        f"Hello {user.first_name}!\n"
+        "I am a Zabbix alert monitoring bot.\n"
+        "Available commands:\n"
+        "/getalerts - Get the latest alerts\n"
+        "/gethosts - Get list of hosts\n"
+        "/graph <host> <item_key> [period] - Get performance graph\n"
+        "/dashboard - Take a screenshot of Zabbix dashboard\n"
+        "/ask <question> - Ask AI about Zabbix data\n"
+        "/analyze - Analyze and predict trends\n"
+        "/addwebsite <host> <url> [enabled] - Add website for host"
     )
 
 def main() -> None:
@@ -769,7 +769,14 @@ def main() -> None:
     init_db()
     
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
+    # Configure proxy using Cloudflare Worker if provided
+    proxy_url = os.getenv('TELEGRAM_PROXY_URL', '')
+    if proxy_url:
+        application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).proxy_url(proxy_url).build()
+        logger.info(f"Using proxy for Telegram connection: {proxy_url}")
+    else:
+        application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
+        logger.info("No proxy configured for Telegram connection.")
 
     # Add handlers for commands
     application.add_handler(CommandHandler("start", start))
