@@ -1,0 +1,21 @@
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+ADMIN_IDS=123456789,987654321
+
+# Proxy Configuration (optional)
+USE_PROXY=false
+TELEGRAM_PROXY_URL=
+
+# Zabbix Configuration
+ZABBIX_URL=https://your-zabbix-server.com
+ZABBIX_USER=your_zabbix_username
+ZABBIX_PASSWORD=your_zabbix_password
+BYPASS_SSL=false
+
+# Screenshot Configuration
+SCREENSHOT_WIDTH=1920
+SCREENSHOT_HEIGHT=1080
+
+# AI Integration (optional)
+OPENWEBUI_API_URL=https://your-openwebui-server.com/v1/chat/completions
+OPENWEBUI_API_KEY=your_api_key_here 
