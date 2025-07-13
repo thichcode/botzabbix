@@ -11,12 +11,12 @@ Bot Telegram để giám sát và quản lý Zabbix, tích hợp với AI để 
 - `/help` - Show usage guide / Hiển thị hướng dẫn sử dụng
 
 ### Admin Only Features / Chỉ dành cho admin
-- `/alerts` - View latest alerts with automatic screenshots for URLs / Xem cảnh báo mới nhất kèm ảnh chụp tự động
+- `/getproblems` - View latest problems filtered by host groups / Xem problems mới nhất được lọc theo host groups
 - `/hosts` - List all monitored hosts and their status / Liệt kê các host đang giám sát
 - `/problems` - View active problems from dashboard ID 10 (Warning and above) / Xem các problem đang tồn tại từ dashboard ID 10 (từ Warning trở lên)
-- `/graph` - Get performance graphs for specific items / Xem biểu đồ hiệu suất
-- `/askai` - Ask questions about Zabbix using AI / Hỏi đáp về Zabbix với AI
-- `/analyze` - Get trend analysis and predictions / Phân tích và dự đoán xu hướng
+- `/graph <host/IP>` - Lấy biểu đồ hiệu suất với gợi ý items / Get performance graphs with item suggestions
+- `/ask <host/IP>` - Phân tích thông tin hệ thống với AI / Analyze system information with AI
+- `/analyze` - Phân tích problems và dự đoán vấn đề hệ thống / Analyze problems and predict system issues
 - `/users` - List all bot users / Xem danh sách người dùng
 - `/removeuser` - Remove a user from the bot / Xóa người dùng khỏi bot
 
@@ -58,6 +58,9 @@ ADMIN_IDS=id1,id2,id3
 ZABBIX_URL=https://your-zabbix-server
 ZABBIX_USER=your-username
 ZABBIX_PASSWORD=your-password
+
+# Host Groups for filtering problems (optional)
+HOST_GROUPS=Production Servers,Web Servers,Database Servers
 
 # Screenshot
 SCREENSHOT_WIDTH=1920
@@ -108,10 +111,32 @@ The bot uses SQLite database (`zabbix_alerts.db`) with the following tables:
 5. Configure Open WebUI API for AI features / Cấu hình API Open WebUI để sử dụng tính năng AI
 
 ### Problem Monitoring / Giám sát Problem
-- Shows last 20 active problems / Hiển thị 20 problem đang tồn tại
-- Filters by severity (Warning and above) / Lọc theo mức độ (từ Warning trở lên)
-- Only from dashboard ID 10 / Chỉ từ dashboard ID 10
+- Shows last 10 latest problems / Hiển thị 10 problems mới nhất
+- Filters by host groups (configurable) / Lọc theo host groups (có thể cấu hình)
+- Includes severity and acknowledgment status / Bao gồm mức độ nghiêm trọng và trạng thái xác nhận
 - Admin access only / Chỉ dành cho admin
+- Automatic screenshot for each problem / Tự động chụp ảnh cho mỗi problem
+
+### AI System Analysis / Phân tích hệ thống với AI
+- Tìm kiếm host theo tên hoặc IP / Search host by name or IP
+- Thu thập thông tin CPU, RAM, disk, network / Collect CPU, RAM, disk, network information
+- Phân tích hiệu suất hệ thống với AI / Analyze system performance with AI
+- Đưa ra khuyến nghị tối ưu hóa / Provide optimization recommendations
+- Dự đoán xu hướng sử dụng tài nguyên / Predict resource usage trends
+
+### Problem Analysis & Prediction / Phân tích và dự đoán Problems
+- Phân tích problems trong 3 ngày qua / Analyze problems from last 3 days
+- Xác định hosts có vấn đề nghiêm trọng / Identify hosts with critical issues
+- Phân tích mối quan hệ phụ thuộc giữa hosts / Analyze dependencies between hosts
+- Tìm clusters problems xảy ra cùng lúc / Find problem clusters occurring simultaneously
+- Dự đoán vấn đề có thể xảy ra tiếp theo / Predict potential future issues
+
+### Performance Graphs / Biểu đồ hiệu suất
+- Tìm kiếm host theo tên hoặc IP / Search host by name or IP
+- Gợi ý items phổ biến (CPU, Memory, Disk, Network) / Suggest common items
+- Tạo biểu đồ với thông tin chi tiết / Create graphs with detailed information
+- Inline keyboard để chọn nhanh / Inline keyboard for quick selection
+- Hiển thị thống kê (hiện tại, trung bình, max, min) / Display statistics
 
 ## Troubleshooting / Xử lý sự cố
 
@@ -148,6 +173,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
   - ZABBIX_URL
   - ZABBIX_USER
   - ZABBIX_PASSWORD
+- Cấu hình host groups để lọc problems (tùy chọn):
+  - HOST_GROUPS: Danh sách tên host groups cách nhau bởi dấu phẩy
+  - Ví dụ: `HOST_GROUPS=Production Servers,Web Servers,Database Servers`
+  - Nếu không cấu hình, sẽ lấy tất cả problems
 - Đảm bảo server chạy bot có thể truy cập được Zabbix server qua mạng nội bộ hoặc internet.
 
 ### 3. Tích hợp AI (Open WebUI hoặc GPT API)
@@ -164,9 +193,47 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ### 5. Tích hợp với hệ thống cảnh báo Zabbix (tùy chọn)
 - Có thể cấu hình Zabbix gửi cảnh báo qua HTTP hoặc script để gọi API của bot Telegram này.
-- Hoặc sử dụng bot để chủ động lấy cảnh báo từ Zabbix qua lệnh `/alerts`.
+- Hoặc sử dụng bot để chủ động lấy cảnh báo từ Zabbix qua lệnh `/getproblems`.
 
-### 6. Kiểm thử & Tích hợp CI/CD
+### 6. Sử dụng tính năng AI phân tích hệ thống
+- Tìm kiếm host: `/ask server01` hoặc `/ask 192.168.1.100`
+- Bot sẽ tự động thu thập thông tin CPU, RAM, disk, network
+- AI sẽ phân tích và đưa ra:
+  - Đánh giá tổng quan hiệu suất hệ thống
+  - Các vấn đề tiềm ẩn cần chú ý
+  - Khuyến nghị tối ưu hóa
+  - Dự đoán xu hướng sử dụng tài nguyên
+
+### 7. Sử dụng tính năng phân tích và dự đoán problems
+- Chạy phân tích: `/analyze`
+- Bot sẽ phân tích problems trong 3 ngày qua và đưa ra:
+  - **Tổng quan**: Số lượng problems, hosts bị ảnh hưởng, hosts critical
+  - **Phân bố severity**: Thống kê theo mức độ nghiêm trọng
+  - **Hosts có vấn đề**: Danh sách hosts có nhiều problems nhất
+  - **Patterns phổ biến**: Các loại vấn đề thường xảy ra
+  - **Mối quan hệ phụ thuộc**: Host nào phụ thuộc vào host nào
+  - **Problem clusters**: Các vấn đề xảy ra cùng lúc
+  - **Dự đoán**: Vấn đề nào có thể xảy ra tiếp theo
+  - **Khuyến nghị**: Cách khắc phục và phòng ngừa
+
+### 8. Sử dụng tính năng biểu đồ hiệu suất
+- Tìm kiếm host: `/graph server01` hoặc `/graph 192.168.1.100`
+- Bot sẽ hiển thị danh sách items phổ biến được nhóm theo category:
+  - **CPU**: CPU utilization, load average
+  - **Memory**: Memory usage, available memory
+  - **Disk**: Disk usage, inode usage
+  - **Network**: Network traffic, errors, dropped packets
+  - **System**: Uptime, swap usage
+  - **Processes**: Process count, status
+  - **Services**: TCP port status
+- Sử dụng inline keyboard để chọn nhanh CPU, Memory, Disk, Network
+- Biểu đồ sẽ hiển thị:
+  - Đường biểu đồ với màu sắc đẹp
+  - Thông tin host và item
+  - Thống kê (hiện tại, trung bình, max, min)
+  - Khoảng thời gian và số điểm dữ liệu
+
+### 9. Kiểm thử & Tích hợp CI/CD
 - Chạy toàn bộ test bằng lệnh:
   ```bash
   python -m pytest test_bot.py -v
@@ -174,7 +241,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Đảm bảo tất cả test đều pass trước khi deploy.
 - Có thể tích hợp vào pipeline CI/CD (GitHub Actions, GitLab CI, Jenkins, ...).
 
-### 7. Lưu ý khi tích hợp thực tế
+### 10. Lưu ý khi tích hợp thực tế
 - Luôn backup file database `zabbix_alerts.db` định kỳ.
 - Đảm bảo file `.env` không bị public lên git.
 - Kiểm tra log file `bot.log` để debug khi có lỗi.

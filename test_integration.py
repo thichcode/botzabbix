@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 from config import Config
 from decorators import admin_only, validate_input
 from utils import retry, safe_int, format_timestamp, truncate_text, validate_url
-from commands.get_alerts import GetAlertsCommand
+from commands.get_alerts import GetProblemsCommand
 from commands.ask_ai import AskAiCommand
 
 class TestIntegration:
@@ -134,24 +134,32 @@ class TestIntegration:
         update.message.reply_text.assert_called_with("Input quá dài. Tối đa 100 ký tự.")
     
     @pytest.mark.asyncio
-    async def test_get_alerts_command(self):
-        """Test get alerts command"""
+    async def test_get_problems_command(self):
+        """Test get problems command"""
         # Mock Zabbix API
         mock_zapi = Mock()
+        mock_zapi.problem.get.return_value = [
+            {
+                'objectid': '123',
+                'name': 'Test problem',
+                'clock': '1640995200',
+                'severity': '3',
+                'acknowledged': '0',
+                'hosts': [{'host': 'test-host'}]
+            }
+        ]
         mock_zapi.trigger.get.return_value = [
             {
                 'triggerid': '123',
-                'description': 'Test alert',
-                'priority': '3',
-                'lastchange': '1640995200',
-                'hosts': [{'host': 'test-host'}]
+                'description': 'Test problem description',
+                'priority': '3'
             }
         ]
         
         with patch('commands.get_alerts.get_zabbix_api', return_value=mock_zapi):
-            with patch('commands.get_alerts.save_alert'):
+            with patch('commands.get_alerts.save_problem'):
                 with patch('commands.get_alerts.send_alert_with_screenshot', new_callable=AsyncMock):
-                    command = GetAlertsCommand()
+                    command = GetProblemsCommand()
                     
                     # Create mock update and context
                     update = Mock(spec=Update)
@@ -167,7 +175,7 @@ class TestIntegration:
                     await command.execute(update, context)
                     
                     # Verify API was called
-                    mock_zapi.trigger.get.assert_called_once()
+                    mock_zapi.problem.get.assert_called_once()
                     
                     # Verify messages were sent
                     assert update.message.reply_text.call_count >= 1
@@ -177,14 +185,31 @@ class TestIntegration:
         """Test ask AI command"""
         # Mock Zabbix API
         mock_zapi = Mock()
-        mock_zapi.trigger.get.return_value = []
-        mock_zapi.host.get.return_value = []
+        mock_zapi.host.get.return_value = [
+            {
+                'hostid': '123',
+                'host': 'test-server',
+                'name': 'Test Server',
+                'status': '0',
+                'interfaces': [{'ip': '192.168.1.100'}]
+            }
+        ]
+        mock_zapi.item.get.return_value = [
+            {
+                'itemid': '456',
+                'name': 'CPU utilization',
+                'key_': 'system.cpu.util[,user]',
+                'lastvalue': '25.5',
+                'lastclock': '1640995200',
+                'units': '%'
+            }
+        ]
         
         # Mock requests
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            'choices': [{'message': {'content': 'AI response'}}]
+            'choices': [{'message': {'content': 'AI analysis response'}}]
         }
         
         with patch('commands.ask_ai.get_zabbix_api', return_value=mock_zapi):
@@ -199,12 +224,125 @@ class TestIntegration:
                 update.message.reply_text = AsyncMock()
                 
                 context = Mock(spec=ContextTypes.DEFAULT_TYPE)
-                context.args = ["What is the status?"]
+                context.args = ["test-server"]
                 
                 await command.execute(update, context)
                 
+                # Verify API was called
+                mock_zapi.host.get.assert_called()
+                mock_zapi.item.get.assert_called()
+                
                 # Verify messages were sent
                 assert update.message.reply_text.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_analyze_command(self):
+        """Test analyze command"""
+        # Mock Zabbix API
+        mock_zapi = Mock()
+        mock_zapi.problem.get.return_value = [
+            {
+                'objectid': '123',
+                'name': 'Test problem',
+                'clock': '1640995200',
+                'severity': '4',
+                'acknowledged': '0',
+                'hosts': [{'host': 'test-server'}]
+            },
+            {
+                'objectid': '124',
+                'name': 'Another problem',
+                'clock': '1640995300',
+                'severity': '3',
+                'acknowledged': '1',
+                'hosts': [{'host': 'test-server'}]
+            }
+        ]
+        mock_zapi.trigger.get.return_value = [
+            {
+                'triggerid': '123',
+                'description': 'Test problem description',
+                'priority': '4',
+                'dependencies': []
+            },
+            {
+                'triggerid': '124',
+                'description': 'Another problem description',
+                'priority': '3',
+                'dependencies': ['123']
+            }
+        ]
+        
+        with patch('commands.analyze.get_zabbix_api', return_value=mock_zapi):
+            from commands.analyze import AnalyzeCommand
+            command = AnalyzeCommand()
+            
+            # Create mock update and context
+            update = Mock(spec=Update)
+            update.effective_user = Mock(spec=User)
+            update.effective_user.id = 123  # Admin ID
+            update.message = Mock()
+            update.message.reply_text = AsyncMock()
+            
+            context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+            
+            await command.execute(update, context)
+            
+            # Verify API was called
+            mock_zapi.problem.get.assert_called_once()
+            mock_zapi.trigger.get.assert_called_once()
+            
+            # Verify messages were sent
+            assert update.message.reply_text.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_get_graph_command(self):
+        """Test get graph command"""
+        # Mock Zabbix API
+        mock_zapi = Mock()
+        mock_zapi.host.get.return_value = [
+            {
+                'hostid': '123',
+                'host': 'test-server',
+                'name': 'Test Server',
+                'status': '0',
+                'interfaces': [{'ip': '192.168.1.100'}]
+            }
+        ]
+        mock_zapi.item.get.return_value = [
+            {
+                'itemid': '456',
+                'name': 'CPU utilization',
+                'key_': 'system.cpu.util[,user]',
+                'units': '%',
+                'lastvalue': '25.5',
+                'lastclock': '1640995200'
+            }
+        ]
+        
+        with patch('commands.get_graph.get_zabbix_api', return_value=mock_zapi):
+            from commands.get_graph import GetGraphCommand
+            command = GetGraphCommand()
+            
+            # Create mock update and context
+            update = Mock(spec=Update)
+            update.effective_user = Mock(spec=User)
+            update.effective_user.id = 123  # Admin ID
+            update.message = Mock()
+            update.message.reply_text = AsyncMock()
+            update.message.reply_photo = AsyncMock()
+            
+            context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+            context.args = ["test-server"]
+            
+            await command.execute(update, context)
+            
+            # Verify API was called
+            mock_zapi.host.get.assert_called()
+            mock_zapi.item.get.assert_called()
+            
+            # Verify messages were sent
+            assert update.message.reply_text.call_count >= 1
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"]) 

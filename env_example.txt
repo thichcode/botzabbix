@@ -12,6 +12,10 @@ ZABBIX_USER=your_zabbix_username
 ZABBIX_PASSWORD=your_zabbix_password
 BYPASS_SSL=false
 
+# Host Groups for filtering problems (optional)
+# Comma-separated list of host group names
+HOST_GROUPS=Production Servers,Web Servers,Database Servers
+
 # Screenshot Configuration
 SCREENSHOT_WIDTH=1920
 SCREENSHOT_HEIGHT=1080

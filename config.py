@@ -17,6 +17,9 @@ class Config:
     ZABBIX_PASSWORD = os.getenv('ZABBIX_PASSWORD')
     BYPASS_SSL = os.getenv('BYPASS_SSL', 'false').lower() == 'true'
     
+    # Host Groups for filtering problems
+    HOST_GROUPS = [group.strip() for group in os.getenv('HOST_GROUPS', '').split(',') if group.strip()]
+    
     # Screenshot
     SCREENSHOT_WIDTH = int(os.getenv('SCREENSHOT_WIDTH', '1920'))
     SCREENSHOT_HEIGHT = int(os.getenv('SCREENSHOT_HEIGHT', '1080'))

@@ -1,11 +1,11 @@
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import time
 
 from config import Config
 from db import init_db, save_user
-from commands.get_alerts import GetAlertsCommand
+from commands.get_alerts import GetProblemsCommand
 from commands.get_hosts import GetHostsCommand
 from commands.get_graph import GetGraphCommand
 from commands.dashboard import DashboardCommand
@@ -43,11 +43,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Xin chào {user.first_name}! 👋\n"
         "Tôi là bot giám sát cảnh báo Zabbix.\n\n"
         "**Các lệnh có sẵn:**\n"
-        "📊 `/getalerts` - Lấy cảnh báo mới nhất\n"
+        "📊 `/getproblems` - Lấy problems mới nhất\n"
         "🖥️ `/gethosts` - Lấy danh sách hosts\n"
-        "📈 `/graph <host> <item_key> [period]` - Lấy biểu đồ hiệu suất\n"
+        "📈 `/graph <host/IP>` - Lấy biểu đồ hiệu suất\n"
         "🖼️ `/dashboard` - Chụp ảnh dashboard Zabbix\n"
-        "🤖 `/ask <câu hỏi>` - Hỏi AI về dữ liệu Zabbix\n"
+        "🤖 `/ask <host/IP>` - Phân tích thông tin hệ thống với AI\n"
         "📊 `/analyze` - Phân tích và dự đoán xu hướng\n"
         "🌐 `/addwebsite <host> <url> [enabled]` - Thêm website cho host\n"
         "💚 `/health` - Kiểm tra trạng thái bot",
@@ -99,6 +99,45 @@ Vui lòng kiểm tra logs để biết thêm chi tiết."""
         await update.message.reply_text(error_message, parse_mode='Markdown')
         logger.error(f"Health check failed: {str(e)}")
 
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle callback queries from inline keyboards"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if user.id not in Config.ADMIN_IDS:
+        await query.edit_message_text("Bạn không có quyền sử dụng tính năng này.")
+        return
+    
+    try:
+        data = query.data
+        
+        if data.startswith("graph_"):
+            # Format: graph_hostid_itemid_period
+            parts = data.split("_")
+            if len(parts) >= 4:
+                hostid = parts[1]
+                itemid = parts[2]
+                period = int(parts[3])
+                
+                await query.edit_message_text("Đang tạo biểu đồ...")
+                
+                graph_command = GetGraphCommand()
+                await graph_command.create_graph(update, hostid, itemid, period)
+                
+                # Xóa message "Đang tạo biểu đồ..."
+                await query.edit_message_text("✅ Biểu đồ đã được tạo!")
+        
+        elif data.startswith("search_items_"):
+            # Format: search_items_hostid
+            hostid = data.split("_")[2]
+            
+            await query.edit_message_text("Tính năng tìm kiếm thêm items sẽ được phát triển trong phiên bản tiếp theo.")
+    
+    except Exception as e:
+        logger.error(f"Error handling callback query: {str(e)}")
+        await query.edit_message_text(f"Lỗi khi xử lý yêu cầu: {str(e)}")
+
 def main() -> None:
     """Start the bot."""
     # Validate configuration
@@ -127,13 +166,16 @@ def main() -> None:
     # Add handlers for commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("health", health_check))
-    application.add_handler(CommandHandler("getalerts", GetAlertsCommand().execute))
+    application.add_handler(CommandHandler("getproblems", GetProblemsCommand().execute))
     application.add_handler(CommandHandler("gethosts", GetHostsCommand().execute))
     application.add_handler(CommandHandler("graph", GetGraphCommand().execute))
     application.add_handler(CommandHandler("dashboard", DashboardCommand().execute))
     application.add_handler(CommandHandler("ask", AskAiCommand().execute))
     application.add_handler(CommandHandler("analyze", AnalyzeCommand().execute))
     application.add_handler(CommandHandler("addwebsite", AddWebsiteCommand().execute))
+    
+    # Add callback query handler
+    application.add_handler(CallbackQueryHandler(handle_callback_query))
 
     # Start the Bot
     logger.info("Starting bot...")

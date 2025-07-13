@@ -122,6 +122,20 @@ def save_alert(trigger_id, host, description, priority, timestamp, db_path=DB_PA
         logger.error(f"Error saving alert: {e}")
         return False
 
+def save_problem(problem_id, host, description, priority, timestamp, severity, db_path=DB_PATH):
+    try:
+        with get_db_connection(db_path) as conn:
+            c = conn.cursor()
+            c.execute('''INSERT INTO alerts 
+                         (trigger_id, host, description, priority, timestamp, status)
+                         VALUES (?, ?, ?, ?, ?, ?)''',
+                      (problem_id, host, description, priority, timestamp, severity))
+            conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Error saving problem: {e}")
+        return False
+
 def add_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
     try:
         with get_db_connection(db_path) as conn:
