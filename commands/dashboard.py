@@ -8,24 +8,27 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+from config import Config
+from decorators import admin_only
 
 logger = logging.getLogger(__name__)
 
 class DashboardCommand:
+    @admin_only
     async def execute(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            await update.message.reply_text("Taking screenshot of Zabbix dashboard...")
+            await update.message.reply_text("Đang chụp ảnh dashboard Zabbix...")
             
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"--window-size={os.getenv('SCREENSHOT_WIDTH', '1920')},{os.getenv('SCREENSHOT_HEIGHT', '1080')}")
+            chrome_options.add_argument(f"--window-size={Config.SCREENSHOT_WIDTH},{Config.SCREENSHOT_HEIGHT}")
 
             driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
             
             try:
-                zabbix_url = os.getenv('ZABBIX_URL')
+                zabbix_url = Config.ZABBIX_URL
                 driver.get(zabbix_url)
                 
                 time.sleep(2)
@@ -33,8 +36,8 @@ class DashboardCommand:
                 username_field = driver.find_element("name", "name")
                 password_field = driver.find_element("name", "password")
                 
-                username_field.send_keys(os.getenv('ZABBIX_USER'))
-                password_field.send_keys(os.getenv('ZABBIX_PASSWORD'))
+                username_field.send_keys(Config.ZABBIX_USER)
+                password_field.send_keys(Config.ZABBIX_PASSWORD)
                 
                 login_button = driver.find_element("xpath", "//button[@type='submit']")
                 login_button.click()
@@ -49,5 +52,5 @@ class DashboardCommand:
                 driver.quit()
                 
         except Exception as e:
-            logger.error(f"Error taking dashboard screenshot: {str(e)}")
-            await update.message.reply_text(f"Error taking dashboard screenshot: {str(e)}")
+            logger.error(f"Lỗi khi chụp ảnh dashboard: {str(e)}")
+            await update.message.reply_text(f"Lỗi khi chụp ảnh dashboard: {str(e)}")

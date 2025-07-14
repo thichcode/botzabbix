@@ -2,22 +2,19 @@ import sqlite3
 import time
 import logging
 from contextlib import contextmanager
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from config import Config
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = 'zabbix_alerts.db'
-DB_TIMEOUT = 10
-DATA_RETENTION_PERIOD = 90 * 24 * 60 * 60
 
 class DatabaseError(Exception):
     pass
 
 @contextmanager
-def get_db_connection(db_path=DB_PATH):
+def get_db_connection(db_path=Config.DB_PATH):
     conn = None
     try:
-        conn = sqlite3.connect(db_path, timeout=DB_TIMEOUT)
+        conn = sqlite3.connect(db_path, timeout=Config.DB_TIMEOUT)
         conn.row_factory = sqlite3.Row
         yield conn
     except sqlite3.Error as e:
@@ -30,7 +27,7 @@ def get_db_connection(db_path=DB_PATH):
             except Exception as e:
                 logger.error(f"Error closing database connection: {e}")
 
-def init_db(db_path=DB_PATH):
+def init_db(db_path=Config.DB_PATH):
     try:
         with get_db_connection(db_path) as conn:
             c = conn.cursor()
@@ -72,9 +69,9 @@ def init_db(db_path=DB_PATH):
         logger.error(f"Error initializing database: {e}")
         raise
 
-def save_user(user_id: int, username: str, first_name: str, last_name: str, db_path=DB_PATH) -> bool:
+def save_user(user_id: int, username: str, first_name: str, last_name: str) -> bool:
     try:
-        with get_db_connection(db_path) as conn:
+        with get_db_connection() as conn:
             c = conn.cursor()
             c.execute('''INSERT OR REPLACE INTO users 
                          (id, username, first_name, last_name, join_date, is_active)
@@ -86,9 +83,9 @@ def save_user(user_id: int, username: str, first_name: str, last_name: str, db_p
         logger.error(f"Error saving user: {e}")
         return False
 
-def get_user(user_id: int, db_path=DB_PATH) -> Optional[Dict[str, Any]]:
+def get_user(user_id: int) -> Optional[Dict[str, Any]]:
     try:
-        with get_db_connection(db_path) as conn:
+        with get_db_connection() as conn:
             c = conn.cursor()
             c.execute('SELECT * FROM users WHERE id = ?', (user_id,))
             row = c.fetchone()
@@ -97,9 +94,9 @@ def get_user(user_id: int, db_path=DB_PATH) -> Optional[Dict[str, Any]]:
         logger.error(f"Error getting user: {e}")
         return None
 
-def remove_user(user_id: int, db_path=DB_PATH):
+def remove_user(user_id: int) -> bool:
     try:
-        with get_db_connection(db_path) as conn:
+        with get_db_connection() as conn:
             c = conn.cursor()
             c.execute('UPDATE users SET is_active = 0 WHERE id = ?', (user_id,))
             conn.commit()
@@ -108,9 +105,9 @@ def remove_user(user_id: int, db_path=DB_PATH):
         logger.error(f"Error removing user: {str(e)}")
         return False
 
-def save_alert(trigger_id, host, description, priority, timestamp, db_path=DB_PATH):
+def save_alert(trigger_id, host, description, priority, timestamp) -> bool:
     try:
-        with get_db_connection(db_path) as conn:
+        with get_db_connection() as conn:
             c = conn.cursor()
             c.execute('''INSERT INTO alerts 
                          (trigger_id, host, description, priority, timestamp)
@@ -122,59 +119,32 @@ def save_alert(trigger_id, host, description, priority, timestamp, db_path=DB_PA
         logger.error(f"Error saving alert: {e}")
         return False
 
-def save_problem(problem_id, host, description, priority, timestamp, severity, db_path=DB_PATH):
+def add_host_website(host: str, url: str, enabled: bool) -> bool:
     try:
-        with get_db_connection(db_path) as conn:
+        with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute('''INSERT INTO alerts 
-                         (trigger_id, host, description, priority, timestamp, status)
-                         VALUES (?, ?, ?, ?, ?, ?)''',
-                      (problem_id, host, description, priority, timestamp, severity))
-            conn.commit()
-            return True
-    except Exception as e:
-        logger.error(f"Error saving problem: {e}")
-        return False
-
-def add_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
-    try:
-        with get_db_connection(db_path) as conn:
-            c = conn.cursor()
-            c.execute('''INSERT OR REPLACE INTO error_patterns 
-                         (pattern, description, solution, frequency, last_updated)
-                         VALUES (?, NULL, NULL, 0, ?)''',
-                      (pattern, int(time.time())))
+            c.execute('''INSERT OR REPLACE INTO host_websites (host, website_url, screenshot_enabled)
+                         VALUES (?, ?, ?)''', (host, url, enabled))
             conn.commit()
         return True
     except Exception as e:
-        logger.error(f"Error adding error pattern: {e}")
+        logger.error(f"Error inserting host website: {e}")
         return False
 
-def get_error_patterns(db_path=DB_PATH) -> list:
+def get_host_website(host: str) -> Optional[tuple]:
     try:
-        with get_db_connection(db_path) as conn:
+        with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT pattern FROM error_patterns')
-            return [row['pattern'] for row in c.fetchall()]
+            c.execute('SELECT website_url, screenshot_enabled FROM host_websites WHERE host = ?', (host,))
+            return c.fetchone()
     except Exception as e:
-        logger.error(f"Error getting error patterns: {e}")
-        return []
+        logger.error(f"Error fetching host website: {e}")
+        return None
 
-def remove_error_pattern(pattern: str, db_path=DB_PATH) -> bool:
+def cleanup_old_data():
     try:
-        with get_db_connection(db_path) as conn:
-            c = conn.cursor()
-            c.execute('DELETE FROM error_patterns WHERE pattern = ?', (pattern,))
-            conn.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Error removing error pattern: {e}")
-        return False
-
-def cleanup_old_data(db_path=DB_PATH, retention_period=DATA_RETENTION_PERIOD):
-    try:
-        cutoff_time = int(time.time()) - retention_period
-        with get_db_connection(db_path) as conn:
+        cutoff_time = int(time.time()) - Config.DATA_RETENTION_PERIOD
+        with get_db_connection() as conn:
             c = conn.cursor()
             c.execute('DELETE FROM alerts WHERE timestamp < ?', (cutoff_time,))
             alerts_deleted = c.rowcount

@@ -1,121 +1,77 @@
 import logging
+import time
+import io
 from telegram import Update
 from telegram.ext import ContextTypes
-from zabbix import get_zabbix_api
-from db import save_problem
-from screenshot import send_alert_with_screenshot
 from decorators import admin_only
-from utils import retry, format_timestamp
-from config import Config
+from zabbix import get_zabbix_api
+from db import save_alert
+from utils import extract_url_from_text
+from screenshot import take_screenshot
 
 logger = logging.getLogger(__name__)
 
-class GetProblemsCommand:
+class GetAlertsCommand:
     @admin_only
     async def execute(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-
         try:
-            await update.message.reply_text("Đang lấy problems mới nhất...")
-            
             zapi = get_zabbix_api()
-            problems = self._fetch_problems(zapi)
-            
-            if not problems:
-                await update.message.reply_text("Không có problems mới nào.")
+            alerts = zapi.trigger.get({
+                "output": ["description", "lastchange", "priority", "triggerid"],
+                "selectHosts": ["host"],
+                "sortfield": "lastchange",
+                "sortorder": "DESC",
+                "limit": 10
+            })
+
+            if not alerts:
+                await update.message.reply_text("Không có cảnh báo nào.")
                 return
+
+            for alert in alerts:
+                host = alert['hosts'][0]['host'] if alert['hosts'] else "Unknown"
+                alert_info = {
+                    'trigger_id': alert['triggerid'],
+                    'host': host,
+                    'description': alert['description'],
+                    'priority': alert['priority'],
+                    'timestamp': int(alert['lastchange'])
+                }
                 
-            await update.message.reply_text(f"Tìm thấy {len(problems)} problems mới nhất:")
-            
-            # Process each problem
-            for problem in problems:
-                await self._process_problem(problem, update.effective_chat.id, context)
+                save_alert(
+                    alert_info['trigger_id'],
+                    alert_info['host'],
+                    alert_info['description'],
+                    alert_info['priority'],
+                    alert_info['timestamp']
+                )
                 
+                await self.send_alert_with_screenshot(update.effective_chat.id, alert_info, context)
+
         except Exception as e:
-            logger.error(f"Error fetching latest problems: {str(e)}")
-            await update.message.reply_text(f"Lỗi khi lấy problems: {str(e)}")
-            return
+            logger.error(f"Error getting alerts: {str(e)}")
+            await update.message.reply_text(f"Lỗi khi lấy cảnh báo: {str(e)}")
 
-    def _fetch_problems(self, zapi):
-        """Fetch problems from Zabbix filtered by host groups"""
-        # Get host group IDs if specified
-        host_group_ids = []
-        if Config.HOST_GROUPS:
-            host_groups = zapi.hostgroup.get({
-                "output": ["groupid", "name"],
-                "filter": {"name": Config.HOST_GROUPS}
-            })
-            host_group_ids = [group["groupid"] for group in host_groups]
-        
-        # Get hosts from specified host groups
-        host_ids = []
-        if host_group_ids:
-            hosts = zapi.host.get({
-                "output": ["hostid"],
-                "groupids": host_group_ids
-            })
-            host_ids = [host["hostid"] for host in hosts]
-        
-        # Build problem query
-        problem_params = {
-            "output": ["objectid", "name", "clock", "severity", "acknowledged"],
-            "selectHosts": ["host"],
-            "sortfield": "clock",
-            "sortorder": "DESC",
-            "limit": 10,
-            "recent": True
-        }
-        
-        # Add host filter if host groups are specified
-        if host_ids:
-            problem_params["hostids"] = host_ids
-        
-        problems = zapi.problem.get(problem_params)
-        
-        # Get trigger information for each problem
-        if problems:
-            trigger_ids = [problem["objectid"] for problem in problems]
-            triggers = zapi.trigger.get({
-                "output": ["description", "priority"],
-                "triggerids": trigger_ids
-            })
-            
-            # Create a mapping of trigger_id to trigger info
-            trigger_map = {trigger["triggerid"]: trigger for trigger in triggers}
-            
-            # Enhance problems with trigger information
-            for problem in problems:
-                trigger_id = problem["objectid"]
-                if trigger_id in trigger_map:
-                    problem["trigger_description"] = trigger_map[trigger_id]["description"]
-                    problem["priority"] = trigger_map[trigger_id]["priority"]
-                else:
-                    problem["trigger_description"] = problem["name"]
-                    problem["priority"] = 0
-        
-        return problems
+    async def send_alert_with_screenshot(self, chat_id: int, alert_info: dict, context: ContextTypes.DEFAULT_TYPE):
+        """Gửi cảnh báo kèm ảnh chụp màn hình nếu có URL trong trigger"""
+        try:
+            message = f"⚠️ Cảnh báo mới:\n"
+            message += f"Host: {alert_info['host']}\n"
+            message += f"Mô tả: {alert_info['description']}\n"
+            message += f"Mức độ: {alert_info['priority']}\n"
+            message += f"Thời gian: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(alert_info['timestamp']))}\n"
 
-    async def _process_problem(self, problem, chat_id, context):
-        """Process individual problem"""
-        host = problem['hosts'][0]['host'] if problem['hosts'] else "Unknown"
-        problem_info = {
-            'problem_id': problem['objectid'],
-            'host': host,
-            'description': problem.get('trigger_description', problem['name']),
-            'priority': problem.get('priority', 0),
-            'timestamp': int(problem['clock']),
-            'severity': problem['severity'],
-            'acknowledged': problem['acknowledged']
-        }
-        
-        # Save to database
-        save_problem(
-            problem_info['problem_id'],
-            problem_info['host'],
-            problem_info['description'],
-            problem_info['priority'],
-            problem_info['timestamp'],
-            problem_info['severity']
-        )
-        
-        # Send with screenshot
-        await send_alert_with_screenshot(chat_id, problem_info, context)
+            await context.bot.send_message(chat_id=chat_id, text=message)
+
+            url = extract_url_from_text(alert_info['description'])
+            if url:
+                await context.bot.send_message(chat_id=chat_id, text=f"Đang chụp ảnh website {url}...")
+                try:
+                    screenshot = await take_screenshot(url)
+                    await context.bot.send_photo(chat_id=chat_id, photo=io.BytesIO(screenshot))
+                except Exception as e:
+                    logger.error(f"Error taking screenshot for alert: {e}")
+                    await context.bot.send_message(chat_id=chat_id, text="Không thể chụp ảnh website.")
+
+        except Exception as e:
+            logger.error(f"Error sending alert with screenshot: {e}")
