@@ -43,6 +43,9 @@ def mask_sensitive_data(text: str) -> str:
     if not text:
         return text
     
+    # Mask Zabbix auth token in JSON payload
+    text = re.sub(r'("auth":\s*")[^"]+(")', r'\1*****\2', text)
+    
     # Mask Telegram Bot Token (format: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
     text = re.sub(r'(\d{8,10}):[A-Za-z0-9_-]{35}', r'\1:*****', text)
     # Alternative pattern for Telegram Bot Token

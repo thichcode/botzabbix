@@ -108,7 +108,8 @@ Nếu cần hỗ trợ, vui lòng liên hệ admin.
         bot.reply_to(message, welcome_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý lệnh start: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi xử lý lệnh start: {error_message}")
         bot.reply_to(message, "Có lỗi xảy ra khi xử lý lệnh. Vui lòng thử lại sau.")
 
 @bot.message_handler(commands=['help'])
@@ -205,7 +206,8 @@ Nếu gặp vấn đề, vui lòng liên hệ admin hoặc kiểm tra log của 
         bot.reply_to(message, help_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý lệnh help: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi xử lý lệnh help: {error_message}")
         bot.reply_to(message, "Có lỗi xảy ra khi xử lý lệnh. Vui lòng thử lại sau.")
 
 @bot.message_handler(commands=['dashboard'])
@@ -228,8 +230,9 @@ def dashboard_command(message):
             bot.reply_to(message, "❌ Không thể chụp ảnh dashboard. Vui lòng kiểm tra cấu hình Zabbix.")
             
     except Exception as e:
-        logger.error(f"Lỗi khi chụp ảnh dashboard: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi chụp ảnh dashboard: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi chụp ảnh dashboard: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi chụp ảnh dashboard: {error_message}")
 
 @bot.message_handler(commands=['getalerts'])
 @admin_only
@@ -277,8 +280,9 @@ def get_alerts_command(message):
         bot.reply_to(message, alerts_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi lấy alerts: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi lấy alerts: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi lấy alerts: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi lấy alerts: {error_message}")
 
 @bot.message_handler(commands=['gethosts'])
 @admin_only
@@ -317,8 +321,9 @@ def get_hosts_command(message):
         bot.reply_to(message, hosts_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi lấy hosts: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi lấy hosts: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi lấy hosts: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi lấy hosts: {error_message}")
 
 @bot.message_handler(commands=['getgraph'])
 @admin_only
@@ -380,8 +385,9 @@ def get_graph_command(message):
         )
         
     except Exception as e:
-        logger.error(f"Lỗi khi lấy graph: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi lấy graph: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi lấy graph: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi lấy graph: {error_message}")
 
 @bot.message_handler(commands=['ask'])
 @admin_only
@@ -449,8 +455,9 @@ def ask_ai_command(message):
         bot.reply_to(message, analysis_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi phân tích AI: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi phân tích AI: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi phân tích AI: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi phân tích AI: {error_message}")
 
 @bot.message_handler(commands=['analyze'])
 @admin_only
@@ -525,8 +532,9 @@ def analyze_command(message):
         bot.reply_to(message, analysis_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi phân tích: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi phân tích: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi phân tích: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi phân tích: {error_message}")
 
 @bot.message_handler(commands=['addwebsite'])
 @admin_only
@@ -537,8 +545,9 @@ def add_website_command(message):
         bot.reply_to(message, "🌐 Vui lòng nhập URL website bạn muốn thêm:")
         
     except Exception as e:
-        logger.error(f"Lỗi khi thêm website: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi thêm website: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi thêm website: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi thêm website: {error_message}")
 
 @bot.message_handler(commands=['users'])
 @admin_only
@@ -559,8 +568,9 @@ def users_command(message):
         bot.reply_to(message, users_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi lấy users: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi lấy users: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi lấy users: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi lấy users: {error_message}")
 
 @bot.message_handler(commands=['removeuser'])
 @admin_only
@@ -571,8 +581,9 @@ def remove_user_command(message):
         bot.reply_to(message, "👤 Vui lòng nhập User ID bạn muốn xóa:")
         
     except Exception as e:
-        logger.error(f"Lỗi khi xóa user: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi xóa user: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi xóa user: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi xóa user: {error_message}")
 
 # ==================== CALLBACK HANDLERS ====================
 
@@ -634,8 +645,9 @@ def graph_callback(call):
         bot.send_message(call.message.chat.id, graph_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý callback graph: {str(e)}")
-        bot.send_message(call.message.chat.id, f"❌ Lỗi khi tạo biểu đồ: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi xử lý callback graph: {error_message}")
+        bot.send_message(call.message.chat.id, f"❌ Lỗi khi tạo biểu đồ: {error_message}")
 
 # ==================== STATE HANDLERS ====================
 
@@ -658,8 +670,9 @@ def handle_website_input(message):
         bot.delete_state(message.from_user.id, message.chat.id)
         
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý website input: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi xử lý website: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi xử lý website input: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi xử lý website: {error_message}")
 
 @bot.message_handler(state=BotStates.waiting_for_user_id)
 def handle_user_id_input(message):
@@ -682,8 +695,9 @@ def handle_user_id_input(message):
         bot.delete_state(message.from_user.id, message.chat.id)
         
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý user ID input: {str(e)}")
-        bot.reply_to(message, f"❌ Lỗi khi xử lý user ID: {str(e)}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Lỗi khi xử lý user ID input: {error_message}")
+        bot.reply_to(message, f"❌ Lỗi khi xử lý user ID: {error_message}")
 
 # ==================== UTILITY FUNCTIONS ====================
 
@@ -694,7 +708,8 @@ def cleanup_old_data_job():
             cleanup_old_data()
             logger.info("Database cleanup completed")
         except Exception as e:
-            logger.error(f"Error during database cleanup: {e}")
+            error_message = mask_sensitive_data(str(e))
+            logger.error(f"Error during database cleanup: {error_message}")
         
         # Sleep for 24 hours
         time.sleep(24 * 60 * 60)
@@ -741,8 +756,9 @@ def main():
         bot.infinity_polling(timeout=10, long_polling_timeout=5)
         
     except Exception as e:
-        logger.error(f"Error starting bot: {e}")
+        error_message = mask_sensitive_data(str(e))
+        logger.error(f"Error starting bot: {error_message}")
         raise
 
 if __name__ == '__main__':
-    main() 
+    main()
