@@ -30,44 +30,39 @@ class ZabbixAPIWrapper:
             logger.info(f"Successfully logged in to Zabbix as user: {self.user}")
         return zapi
 
-    def _is_token_expired(self, e):
-        return 'API token expired' in str(e) or '-32500' in str(e)
-
-    def _execute_with_retry(self, api_call, *args, **kwargs):
-        try:
-            return api_call(*args, **kwargs)
-        except Exception as e:
-            if self._is_token_expired(e):
-                logger.warning("Zabbix API token expired. Re-authenticating...")
-                self.zapi = self._connect()
-                logger.info("Re-authentication successful. Retrying the request...")
-                # Get the same method from the new zapi object and retry
-                api_object_name = api_call.__self__.__class__.__name__.lower()
-                method_name = api_call.__name__
-                new_api_object = getattr(self.zapi, api_object_name)
-                new_api_call = getattr(new_api_object, method_name)
-                return new_api_call(*args, **kwargs)
-            else:
-                raise e
-
     def __getattr__(self, name):
         # Get the actual API object (e.g., zapi.problem, zapi.host)
         api_object = getattr(self.zapi, name)
 
         class _APIObjectWrapper:
-            def __init__(self, parent_wrapper, api_obj):
+            def __init__(self, parent_wrapper, api_obj_name, api_obj):
                 self.parent_wrapper = parent_wrapper
+                self.api_obj_name = api_obj_name
                 self.api_obj = api_obj
 
             def __getattr__(self, method_name):
                 api_call = getattr(self.api_obj, method_name)
                 
                 def wrapper(*args, **kwargs):
-                    return self.parent_wrapper._execute_with_retry(api_call, *args, **kwargs)
+                    try:
+                        return api_call(*args, **kwargs)
+                    except Exception as e:
+                        if 'API token expired' in str(e) or '-32500' in str(e):
+                            logger.warning("Zabbix API token expired. Re-authenticating...")
+                            self.parent_wrapper.zapi = self.parent_wrapper._connect()
+                            logger.info("Re-authentication successful. Retrying the request...")
+                            
+                            # Get the new api object and method
+                            new_api_object = getattr(self.parent_wrapper.zapi, self.api_obj_name)
+                            new_api_call = getattr(new_api_object, method_name)
+                            
+                            return new_api_call(*args, **kwargs)
+                        else:
+                            raise e
                 
                 return wrapper
 
-        return _APIObjectWrapper(self, api_object)
+        return _APIObjectWrapper(self, name, api_object)
 
 
 def get_zabbix_api():
