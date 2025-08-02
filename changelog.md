@@ -2,6 +2,31 @@
 
 ## [Unreleased] - 2025-07-14
 
+### Security Enhancements / Cải thiện bảo mật
+
+- **Sensitive Data Masking:**
+  - Added automatic masking of sensitive information in logs (tokens, passwords, API keys)
+  - Implemented `SensitiveDataFilter` class to filter all log messages
+  - Created `mask_sensitive_data()` function with support for multiple patterns
+  - Added `setup_secure_logging()` function to configure secure logging globally
+  - Updated `Config` class with `get_safe_config_info()` method for safe configuration display
+
+- **Logging Security:**
+  - All log messages now automatically mask sensitive data before being written
+  - Support for Telegram Bot Token masking (format: 123456789:*****)
+  - Support for API key masking (various formats)
+  - Support for password masking (multiple patterns)
+  - Support for general token masking
+  - Support for Zabbix token masking
+  - Safe for production environments
+
+- **Zabbix Authentication Enhancement:**
+  - Added support for Zabbix API Token authentication (Zabbix 5.4+)
+  - Priority: Use API token if available, fallback to username/password
+  - Only dashboard screenshot requires username/password for web interface login
+  - All API calls now use token authentication when available
+  - Improved security by reducing dependency on username/password
+
 ### Refactoring
 
 - **Modularization:**
@@ -23,3 +48,6 @@
 
 - **New Features:**
   - Added a `changelog.md` to track changes and new features over time.
+  - Added `/start` command to show welcome message and available commands
+  - Added `/help` command to show detailed usage guide
+  - Commands now show different content for admin vs regular users

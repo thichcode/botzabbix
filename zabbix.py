@@ -1,16 +1,16 @@
 import os
+import logging
 from zabbix_api import ZabbixAPI
+from config import Config
+
+logger = logging.getLogger(__name__)
 
 def get_zabbix_api():
-    zabbix_url = os.getenv('ZABBIX_URL')
-    if not zabbix_url:
-        raise ValueError("Environment variable 'ZABBIX_URL' is not set.")
-
-    use_proxy = os.getenv('USE_PROXY', 'false').lower() == 'true'
-    bypass_ssl = os.getenv('BYPASS_SSL', 'false').lower() == 'true'
+    if not Config.ZABBIX_URL:
+        raise ValueError("ZABBIX_URL is not configured.")
 
     session_kwargs = {}
-    if use_proxy:
+    if Config.USE_PROXY:
         http_proxy = os.getenv('HTTP_PROXY')
         https_proxy = os.getenv('HTTPS_PROXY')
         proxies = {}
@@ -21,9 +21,23 @@ def get_zabbix_api():
         if proxies:
             session_kwargs['proxies'] = proxies
     
-    if bypass_ssl:
+    if Config.BYPASS_SSL:
         session_kwargs['verify'] = False
 
-    zapi = ZabbixAPI(zabbix_url, **session_kwargs)
-    zapi.login(os.getenv('ZABBIX_USER'), os.getenv('ZABBIX_PASSWORD'))
+    logger.info(f"Connecting to Zabbix at: {Config.ZABBIX_URL}")
+    zapi = ZabbixAPI(Config.ZABBIX_URL, **session_kwargs)
+    
+    # Priority: Use token if available, otherwise use username/password
+    if Config.ZABBIX_TOKEN:
+        logger.info("Using Zabbix API token for authentication")
+        zapi.login(api_token=Config.ZABBIX_TOKEN)
+        logger.info("Successfully authenticated with Zabbix API token")
+    else:
+        if not Config.ZABBIX_USER or not Config.ZABBIX_PASSWORD:
+            raise ValueError("ZABBIX_USER and ZABBIX_PASSWORD are required when ZABBIX_TOKEN is not provided")
+        
+        logger.info(f"Using username/password authentication for user: {Config.ZABBIX_USER}")
+        zapi.login(Config.ZABBIX_USER, Config.ZABBIX_PASSWORD)
+        logger.info(f"Successfully logged in to Zabbix as user: {Config.ZABBIX_USER}")
+    
     return zapi

@@ -10,6 +10,7 @@ TELEGRAM_PROXY_URL=
 ZABBIX_URL=https://your-zabbix-server.com
 ZABBIX_USER=your_zabbix_username
 ZABBIX_PASSWORD=your_zabbix_password
+ZABBIX_TOKEN=your_zabbix_api_token  # Optional: Use token for API authentication (Zabbix 5.4+)
 BYPASS_SSL=false
 
 # Host Groups for filtering problems (optional)

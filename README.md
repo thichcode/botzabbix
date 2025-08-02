@@ -7,8 +7,9 @@ Bot Telegram để giám sát và quản lý Zabbix, tích hợp với AI để 
 ## Features / Tính năng
 
 ### For All Users / Cho mọi người dùng
+- `/start` - Show welcome message and available commands / Hiển thị lời chào và danh sách lệnh
+- `/help` - Show detailed usage guide / Hiển thị hướng dẫn sử dụng chi tiết
 - `/dashboard` - Take screenshot of Zabbix dashboard / Chụp ảnh dashboard Zabbix
-- `/help` - Show usage guide / Hiển thị hướng dẫn sử dụng
 
 ### Admin Only Features / Chỉ dành cho admin
 - `/getproblems` - View latest problems filtered by host groups / Xem problems mới nhất được lọc theo host groups
@@ -58,6 +59,7 @@ ADMIN_IDS=id1,id2,id3
 ZABBIX_URL=https://your-zabbix-server
 ZABBIX_USER=your-username
 ZABBIX_PASSWORD=your-password
+ZABBIX_TOKEN=your-zabbix-api-token  # Optional: Use token for API authentication (Zabbix 5.4+)
 
 # Host Groups for filtering problems (optional)
 HOST_GROUPS=Production Servers,Web Servers,Database Servers
@@ -94,6 +96,19 @@ The bot uses SQLite database (`zabbix_alerts.db`) with the following tables:
 - Stores user information / Lưu thông tin người dùng
 - Tracks user status (active/removed) / Theo dõi trạng thái người dùng
 - Records join date / Ghi lại ngày tham gia
+
+## Security Features / Tính năng bảo mật
+
+### Sensitive Data Masking / Ẩn thông tin nhạy cảm
+- Tự động mask token, password, API key trong log / Automatically mask tokens, passwords, API keys in logs
+- Bảo vệ thông tin nhạy cảm khỏi bị lộ trong log files / Protect sensitive information from being exposed in log files
+- Hỗ trợ nhiều pattern khác nhau / Support multiple patterns
+- Có thể mở rộng để thêm pattern mới / Extensible for new patterns
+
+### Logging Security / Bảo mật logging
+- Tất cả log messages đều được filter qua SensitiveDataFilter / All log messages are filtered through SensitiveDataFilter
+- Tự động mask thông tin nhạy cảm trước khi ghi log / Automatically mask sensitive data before logging
+- An toàn cho production environment / Safe for production environment
 
 ## Data Retention Policy / Chính sách lưu trữ dữ liệu
 
@@ -168,11 +183,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ### 2. Tích hợp với Zabbix
 - Đảm bảo Zabbix server đã bật API (Zabbix >= 3.0).
-- Tạo user trên Zabbix có quyền đọc dữ liệu (Read-only hoặc Admin).
-- Lấy URL, username, password của Zabbix và điền vào file `.env`:
-  - ZABBIX_URL
-  - ZABBIX_USER
-  - ZABBIX_PASSWORD
+- **Ưu tiên sử dụng API Token (Zabbix 5.4+):**
+  - Tạo API token trong Zabbix Web Interface: Administration > General > API tokens
+  - Token cung cấp bảo mật tốt hơn và không cần username/password
+  - Điền vào file `.env`: `ZABBIX_TOKEN=your-token`
+- **Hoặc sử dụng Username/Password:**
+  - Tạo user trên Zabbix có quyền đọc dữ liệu (Read-only hoặc Admin)
+  - Điền vào file `.env`:
+    - ZABBIX_URL
+    - ZABBIX_USER
+    - ZABBIX_PASSWORD
+- **Lưu ý:** Chỉ có chức năng chụp screenshot dashboard mới cần username/password để đăng nhập web interface
 - Cấu hình host groups để lọc problems (tùy chọn):
   - HOST_GROUPS: Danh sách tên host groups cách nhau bởi dấu phẩy
   - Ví dụ: `HOST_GROUPS=Production Servers,Web Servers,Database Servers`
