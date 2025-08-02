@@ -241,12 +241,12 @@ def get_alerts_command(message):
         zapi = get_zabbix_api()
         
         # Get problems
-        problems = zapi.problem.get(
-            output='extend',
-            sortfield='clock',
-            sortorder='DESC',
-            limit=10
-        )
+        problems = zapi.problem.get({
+            "output": "extend",
+            "sortfield": "clock",
+            "sortorder": "DESC",
+            "limit": 10
+        })
         
         if not problems:
             bot.reply_to(message, "✅ Không có problem nào hiện tại.")
@@ -290,10 +290,10 @@ def get_hosts_command(message):
         zapi = get_zabbix_api()
         
         # Get hosts
-        hosts = zapi.host.get(
-            output=['hostid', 'host', 'name', 'status'],
-            selectInterfaces=['ip']
-        )
+        hosts = zapi.host.get({
+            "output": ['hostid', 'host', 'name', 'status'],
+            "selectInterfaces": ['ip']
+        })
         
         if not hosts:
             bot.reply_to(message, "❌ Không tìm thấy host nào.")
@@ -337,12 +337,12 @@ def get_graph_command(message):
         zapi = get_zabbix_api()
         
         # Find host
-        hosts = zapi.host.get(
-            output=['hostid', 'host', 'name'],
-            filter={'host': [host_query]},
-            search={'host': host_query},
-            searchWildcardsEnabled=True
-        )
+        hosts = zapi.host.get({
+            "output": ['hostid', 'host', 'name'],
+            "filter": {"host": [host_query]},
+            "search": {"host": host_query},
+            "searchWildcardsEnabled": True
+        })
         
         if not hosts:
             bot.reply_to(message, f"❌ Không tìm thấy host '{host_query}'")
@@ -351,13 +351,13 @@ def get_graph_command(message):
         host = hosts[0]
         
         # Get items for the host
-        items = zapi.item.get(
-            output=['itemid', 'name', 'key_'],
-            hostids=host['hostid'],
-            search={'name': ['CPU', 'Memory', 'Disk', 'Network']},
-            searchWildcardsEnabled=True,
-            limit=10
-        )
+        items = zapi.item.get({
+            "output": ['itemid', 'name', 'key_'],
+            "hostids": host['hostid'],
+            "search": {"name": ['CPU', 'Memory', 'Disk', 'Network']},
+            "searchWildcardsEnabled": True,
+            "limit": 10
+        })
         
         if not items:
             bot.reply_to(message, f"❌ Không tìm thấy items cho host '{host['name']}'")
@@ -400,12 +400,12 @@ def ask_ai_command(message):
         zapi = get_zabbix_api()
         
         # Find host
-        hosts = zapi.host.get(
-            output=['hostid', 'host', 'name'],
-            filter={'host': [host_query]},
-            search={'host': host_query},
-            searchWildcardsEnabled=True
-        )
+        hosts = zapi.host.get({
+            "output": ['hostid', 'host', 'name'],
+            "filter": {"host": [host_query]},
+            "search": {"host": host_query},
+            "searchWildcardsEnabled": True
+        })
         
         if not hosts:
             bot.reply_to(message, f"❌ Không tìm thấy host '{host_query}'")
@@ -414,21 +414,21 @@ def ask_ai_command(message):
         host = hosts[0]
         
         # Get system information
-        items = zapi.item.get(
-            output=['itemid', 'name', 'key_'],
-            hostids=host['hostid'],
-            search={'name': ['CPU', 'Memory', 'Disk', 'Network']},
-            searchWildcardsEnabled=True
-        )
+        items = zapi.item.get({
+            "output": ['itemid', 'name', 'key_'],
+            "hostids": host['hostid'],
+            "search": {"name": ['CPU', 'Memory', 'Disk', 'Network']},
+            "searchWildcardsEnabled": True
+        })
         
         # Get latest values
-        history = zapi.history.get(
-            output='extend',
-            itemids=[item['itemid'] for item in items[:5]],  # Limit to 5 items
-            sortfield='clock',
-            sortorder='DESC',
-            limit=1
-        )
+        history = zapi.history.get({
+            "output": "extend",
+            "itemids": [item['itemid'] for item in items[:5]],  # Limit to 5 items
+            "sortfield": "clock",
+            "sortorder": "DESC",
+            "limit": 1
+        })
         
         # Format analysis
         analysis_text = f"🤖 **Phân tích AI cho host:** {host['name']}\n\n"
@@ -464,12 +464,12 @@ def analyze_command(message):
         # Get problems from last 3 days
         three_days_ago = int((datetime.datetime.now() - datetime.timedelta(days=3)).timestamp())
         
-        problems = zapi.problem.get(
-            output='extend',
-            time_from=three_days_ago,
-            sortfield='clock',
-            sortorder='DESC'
-        )
+        problems = zapi.problem.get({
+            "output": "extend",
+            "time_from": three_days_ago,
+            "sortfield": "clock",
+            "sortorder": "DESC"
+        })
         
         if not problems:
             bot.reply_to(message, "✅ Không có problem nào trong 3 ngày qua.")
@@ -487,10 +487,10 @@ def analyze_command(message):
             severity_count[severity] = severity_count.get(severity, 0) + 1
             
             # Get host name
-            hosts = zapi.host.get(
-                output=['name'],
-                hostids=problem['objectid']
-            )
+            hosts = zapi.host.get({
+                "output": ['name'],
+                "hostids": problem['objectid']
+            })
             if hosts:
                 host_name = hosts[0]['name']
                 host_count[host_name] = host_count.get(host_name, 0) + 1
@@ -590,10 +590,10 @@ def graph_callback(call):
         zapi = get_zabbix_api()
         
         # Get item info
-        items = zapi.item.get(
-            output=['name', 'key_'],
-            itemids=itemid
-        )
+        items = zapi.item.get({
+            "output": ['name', 'key_'],
+            "itemids": itemid
+        })
         
         if not items:
             bot.send_message(call.message.chat.id, "❌ Không tìm thấy item")
@@ -602,13 +602,13 @@ def graph_callback(call):
         item = items[0]
         
         # Get history data
-        history = zapi.history.get(
-            output='extend',
-            itemids=itemid,
-            sortfield='clock',
-            sortorder='DESC',
-            limit=100
-        )
+        history = zapi.history.get({
+            "output": "extend",
+            "itemids": itemid,
+            "sortfield": "clock",
+            "sortorder": "DESC",
+            "limit": 100
+        })
         
         if not history:
             bot.send_message(call.message.chat.id, "❌ Không có dữ liệu lịch sử")
