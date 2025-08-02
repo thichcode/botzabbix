@@ -7,7 +7,13 @@ load_dotenv()
 class Config:
     # Telegram Bot
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
+    ADMIN_IDS = []
+    try:
+        admin_ids_str = os.getenv('ADMIN_IDS', '')
+        if admin_ids_str:
+            ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip() and id.strip().isdigit()]
+    except (ValueError, AttributeError):
+        ADMIN_IDS = []
     TELEGRAM_PROXY_URL = os.getenv('TELEGRAM_PROXY_URL')
     USE_PROXY = os.getenv('USE_PROXY', 'false').lower() == 'true'
     

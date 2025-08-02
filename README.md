@@ -6,12 +6,14 @@ Bot Telegram để giám sát và quản lý Zabbix, tích hợp với AI để 
 
 ## Features / Tính năng
 
-### For All Users / Cho mọi người dùng
+### Bot v1 (python-telegram-bot) / Bot v1 (python-telegram-bot)
+
+#### For All Users / Cho mọi người dùng
 - `/start` - Show welcome message and available commands / Hiển thị lời chào và danh sách lệnh
 - `/help` - Show detailed usage guide / Hiển thị hướng dẫn sử dụng chi tiết
 - `/dashboard` - Take screenshot of Zabbix dashboard / Chụp ảnh dashboard Zabbix
 
-### Admin Only Features / Chỉ dành cho admin
+#### Admin Only Features / Chỉ dành cho admin
 - `/getproblems` - View latest problems filtered by host groups / Xem problems mới nhất được lọc theo host groups
 - `/hosts` - List all monitored hosts and their status / Liệt kê các host đang giám sát
 - `/problems` - View active problems from dashboard ID 10 (Warning and above) / Xem các problem đang tồn tại từ dashboard ID 10 (từ Warning trở lên)
@@ -20,6 +22,29 @@ Bot Telegram để giám sát và quản lý Zabbix, tích hợp với AI để 
 - `/analyze` - Phân tích problems và dự đoán vấn đề hệ thống / Analyze problems and predict system issues
 - `/users` - List all bot users / Xem danh sách người dùng
 - `/removeuser` - Remove a user from the bot / Xóa người dùng khỏi bot
+
+### Bot v2 (telebot) / Bot v2 (telebot)
+
+#### For All Users / Cho mọi người dùng
+- `/start` - Show welcome message and available commands / Hiển thị lời chào và danh sách lệnh
+- `/help` - Show detailed usage guide / Hiển thị hướng dẫn sử dụng chi tiết
+- `/dashboard` - Take screenshot of Zabbix dashboard / Chụp ảnh dashboard Zabbix
+
+#### Admin Only Features / Chỉ dành cho admin
+- `/getalerts` - View latest problems filtered by host groups / Xem problems mới nhất được lọc theo host groups
+- `/gethosts` - List all monitored hosts and their status / Liệt kê các host đang giám sát
+- `/getgraph <host/IP>` - Lấy biểu đồ hiệu suất với gợi ý items / Get performance graphs with item suggestions
+- `/ask <host/IP>` - Phân tích thông tin hệ thống với AI / Analyze system information with AI
+- `/analyze` - Phân tích problems và dự đoán vấn đề hệ thống / Analyze problems and predict system issues
+- `/addwebsite` - Add website for screenshot / Thêm website để chụp ảnh
+- `/users` - List all bot users / Xem danh sách người dùng
+- `/removeuser` - Remove a user from the bot / Xóa người dùng khỏi bot
+
+#### Enhanced Features / Tính năng nâng cao
+- **State Management** - Conversation flow management / Quản lý luồng hội thoại
+- **Inline Keyboards** - Interactive button selection / Lựa chọn nút tương tác
+- **Better Error Handling** - Improved error messages and recovery / Xử lý lỗi tốt hơn
+- **Simplified API** - Easier to use and maintain / API đơn giản hơn để sử dụng và bảo trì
 
 ### Data Management / Quản lý dữ liệu
 - Automatic data retention (3 months) / Tự động xóa dữ liệu cũ (3 tháng)
@@ -37,7 +62,14 @@ cd zabbix-telegram-bot
 
 2. Install required packages:
 ```bash
+# For bot v1 (python-telegram-bot)
+pip install -r requirements.txt
+
+# Or install manually:
 pip install python-telegram-bot python-dotenv zabbix-api selenium webdriver-manager matplotlib schedule requests
+
+# For bot v2 (telebot) - additional package:
+pip install pyTelegramBotAPI
 ```
 
 3. Install Chrome browser:
@@ -74,8 +106,19 @@ OPENWEBUI_API_KEY=your_openwebui_api_key
 ```
 
 5. Run the bot:
+
+**Bot v1 (python-telegram-bot):**
 ```bash
 python bot.py
+# or
+python run_bot.py
+```
+
+**Bot v2 (telebot):**
+```bash
+python botv2.py
+# or
+python run_botv2.py
 ```
 
 ## Database Structure / Cấu trúc Database

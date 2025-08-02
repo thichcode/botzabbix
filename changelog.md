@@ -2,6 +2,34 @@
 
 ## [Unreleased] - 2025-07-14
 
+### Bot v2.0 - Telebot Implementation / Triển khai Bot v2.0 với Telebot
+
+- **New Bot Version:**
+  - Created `botv2.py` using `pyTelegramBotAPI` (telebot) library
+  - Added `run_botv2.py` script for easy bot v2 execution
+  - Updated `requirements.txt` to include `pyTelegramBotAPI==4.15.4`
+  - Enhanced features with state management and inline keyboards
+  - Improved error handling and user experience
+
+- **Enhanced Features in Bot v2:**
+  - **State Management:** Conversation flow management for multi-step interactions
+  - **Inline Keyboards:** Interactive button selection for graph items
+  - **Better Error Handling:** Improved error messages and recovery mechanisms
+  - **Simplified API:** Easier to use and maintain compared to python-telegram-bot
+  - **Consistent Commands:** All commands from bot v1 with improved implementation
+
+- **Command Improvements:**
+  - `/getalerts` - Renamed from `/getproblems` for clarity
+  - `/gethosts` - Renamed from `/hosts` for consistency
+  - `/addwebsite` - New command for adding websites to screenshot list
+  - Enhanced `/getgraph` with interactive inline keyboard selection
+  - Improved callback handling for graph selection
+
+- **Documentation Updates:**
+  - Updated `README.md` with bot v2 information and usage instructions
+  - Added comparison between bot v1 and bot v2 features
+  - Updated installation instructions for both bot versions
+
 ### Security Enhancements / Cải thiện bảo mật
 
 - **Sensitive Data Masking:**
